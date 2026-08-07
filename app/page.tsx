@@ -1,47 +1,37 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand, CoinBadge } from "@/components/brand";
 import { createConversation, getBootstrap, getFeed } from "@/lib/api";
+import { feedPresentations, formatCompactCount, type FeedPresentation } from "@/lib/presentation";
 import type { Character } from "@/lib/types";
 
-const coverById: Record<string, string> = {
-  char_luna: "/characters/luna.svg",
-  char_kai: "/characters/kai.svg",
-};
-
-const editorialById: Record<string, { eyebrow: string; match: number; note: string }> = {
-  char_luna: { eyebrow: "今夜推荐", match: 98, note: "12.8k 人正在收听" },
-  char_kai: { eyebrow: "城市邂逅", match: 94, note: "9.3k 人走进过他的镜头" },
-};
-
 function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4 4" />
-    </svg>
-  );
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
 }
 
-function ArrowIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 12h13M14 7l5 5-5 5" />
-    </svg>
-  );
+function GlobeIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.3 2.4 3.4 5.4 3.4 9S14.3 18.6 12 21M12 3C9.7 5.4 8.6 8.4 8.6 12s1.1 6.6 3.4 9" /></svg>;
+}
+
+function MessageIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z" /></svg>;
+}
+
+function VoiceIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10v4M9 7v10M13 4v16M17 8v8M21 10v4" /></svg>;
+}
+
+function FilterIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M8 12h8M10.5 17h3" /></svg>;
 }
 
 function FeedSkeleton() {
   return (
-    <div className="discovery-grid" aria-label="正在加载角色">
-      {[0, 1].map((item) => (
-        <div className="discovery-card discovery-skeleton" key={item}>
-          <div className="skeleton skeleton-cover" />
-        </div>
-      ))}
+    <div className="tipsy-grid" aria-label="正在加载角色">
+      {Array.from({ length: 10 }, (_, item) => <div className="tipsy-card card-skeleton" key={item} />)}
     </div>
   );
 }
@@ -54,6 +44,11 @@ export default function FeedPage() {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const characterMap = useMemo(
+    () => new Map(characters.map((character) => [character.id, character])),
+    [characters],
+  );
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -62,7 +57,7 @@ export default function FeedPage() {
       setBalance(bootstrap.wallet.balance);
       setCharacters(feed.items);
     } catch {
-      setError("暂时没能连上角色世界，请确认本地后端已经启动。");
+      setError("暂时没能连接角色世界，请确认本地后端已经启动。");
     } finally {
       setLoading(false);
     }
@@ -72,13 +67,18 @@ export default function FeedPage() {
     void load();
   }, []);
 
-  async function openCharacter(character: Character) {
+  async function openCharacter(card: FeedPresentation) {
     if (openingId) return;
-    setOpeningId(character.id);
+    const backendCharacter = characterMap.get(card.characterId) ?? characters[0];
+    if (!backendCharacter) {
+      setError("角色数据还没有准备好，请稍后重试。");
+      return;
+    }
+    setOpeningId(card.id);
     setError(null);
     try {
-      const result = await createConversation(character.id);
-      router.push(`/chat/${character.id}?conversation=${result.conversation.id}`);
+      const result = await createConversation(backendCharacter.id);
+      router.push(`/chat/${backendCharacter.id}?conversation=${result.conversation.id}&presentation=${card.id}`);
     } catch {
       setError("进入聊天失败了，请稍后再试。");
       setOpeningId(null);
@@ -86,107 +86,81 @@ export default function FeedPage() {
   }
 
   return (
-    <main className="feed-shell">
-      <header className="site-header">
-        <Brand />
-        <nav className="desktop-nav" aria-label="发现导航">
-          <button className="active">为你</button>
-          <button>热门</button>
-          <button>剧情</button>
-          <button>新角色</button>
-        </nav>
-        <div className="header-actions">
-          <button className="round-action" aria-label="搜索角色"><SearchIcon /></button>
-          <CoinBadge balance={balance} />
-          <div className="user-avatar" title="测试用户">F</div>
+    <main className="tipsy-feed-shell">
+      <header className="tipsy-header">
+        <div className="tipsy-header-left">
+          <Brand />
+          <button className="community-pill" aria-label="Fibre 社区"><span>☁</span><i />···</button>
+          <button className="download-pill"><span>▣</span> Download</button>
+        </div>
+        <div className="tipsy-header-right">
+          <button className="header-circle" aria-label="搜索"><SearchIcon /></button>
+          <button className="create-pill">Create</button>
+          <button className="header-circle" aria-label="切换语言"><GlobeIcon /></button>
+          <CoinBadge balance={balance} compact />
+          <button className="login-pill">Login</button>
         </div>
       </header>
 
-      <section className="discovery-shell">
-        <div className="discovery-heading">
-          <div>
-            <span className="live-kicker"><i /> LIVE CHARACTERS</span>
-            <h1>今晚，想进入<br /><em>谁的故事？</em></h1>
+      <section className="feed-content">
+        <div className="feed-controls">
+          <nav className="feed-tabs" aria-label="发现分类">
+            {['For You', 'Trending', 'Worlds', 'Latest', 'Popular', 'Following'].map((label, index) => (
+              <button className={index === 0 ? "active" : ""} key={label}>{label}</button>
+            ))}
+          </nav>
+          <div className="feed-filters">
+            <div className="limitless-copy"><b>Limitless</b><small>Enable to show Limitless on iOS</small></div>
+            <button className="toggle" aria-label="Limitless"><i /></button>
+            <button className="gender-filter">All <span>▾</span></button>
+            <button className="filter-button" aria-label="筛选"><FilterIcon /></button>
           </div>
-          <p>每个角色都有自己的记忆、语气和生活。<br />选一个让你好奇的人，从第一句话开始。</p>
         </div>
 
-        <div className="category-row" aria-label="角色分类">
-          {['✨ 为你精选', '温柔陪伴', '轻松日常', '心动剧情', '深夜电台', '城市故事'].map((label, index) => (
-            <button className={index === 0 ? "active" : ""} key={label}>{label}</button>
-          ))}
-        </div>
-
-        {error && (
-          <div className="error-banner">
-            <span>{error}</span>
-            <button onClick={() => void load()}>重新加载</button>
-          </div>
-        )}
+        {error && <div className="error-banner"><span>{error}</span><button onClick={() => void load()}>重新加载</button></div>}
 
         {loading ? (
           <FeedSkeleton />
         ) : (
-          <div className="discovery-grid">
-            {characters.map((character) => {
-              const editorial = editorialById[character.id] ?? { eyebrow: "为你推荐", match: 92, note: `${character.heat_count} 人聊过` };
-              return (
-                <article className="discovery-card" key={character.id} style={{ "--accent": character.accent_color } as React.CSSProperties}>
+          <div className="tipsy-grid">
+            {feedPresentations.map((card, index) => (
+              <article className="tipsy-card" key={card.id}>
+                <button
+                  className="card-hit-area"
+                  onClick={() => void openCharacter(card)}
+                  disabled={openingId !== null}
+                  aria-label={`和 ${card.name} 开始聊天`}
+                >
                   <Image
-                    className="character-cover"
-                    src={coverById[character.id] ?? "/characters/luna.svg"}
-                    alt={`${character.display_name}的角色封面`}
+                    className="tipsy-card-cover"
+                    src={card.cover}
+                    alt={card.name}
                     fill
-                    priority
-                    sizes="(max-width: 720px) 100vw, 50vw"
+                    priority={index < 5}
+                    sizes="(max-width: 700px) 50vw, (max-width: 1100px) 25vw, 20vw"
                   />
-                  <div className="cover-shade" />
-                  <div className="card-topline">
-                    <span className="editorial-badge"><i /> {editorial.eyebrow}</span>
-                    <span className="match-badge">契合度 {editorial.match}%</span>
-                  </div>
-                  <div className="discovery-copy">
-                    <div className="tag-cloud">
-                      {character.tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}
-                    </div>
-                    <h2>{character.display_name}</h2>
-                    <p className="card-tagline">“{character.tagline}”</p>
-                    <p className="card-intro">{character.intro}</p>
-                    <div className="card-foot">
-                      <div className="creator-line">
-                        <span className="creator-avatar">F</span>
-                        <span><b>Fibre 原创</b><small>{editorial.note}</small></span>
-                      </div>
-                      <button
-                        className="enter-story"
-                        onClick={() => void openCharacter(character)}
-                        disabled={openingId !== null}
-                        aria-label={`和${character.display_name}开始聊天`}
-                      >
-                        <span>{openingId === character.id ? "进入中" : "开始故事"}</span>
-                        <ArrowIcon />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                  <span className="card-darken" />
+                  {card.badge && <span className="card-badge">✦ {card.badge}</span>}
+                  {openingId === card.id && <span className="opening-card">Entering story…</span>}
+                  <span className="card-copy">
+                    <strong>{card.name}{card.hasVoice && <VoiceIcon />}</strong>
+                    <span>{card.tagline}</span>
+                  </span>
+                  <span className="card-footer">
+                    <span className="creator"><i>{card.creator.slice(1, 2).toUpperCase()}</i><b>{card.creator}</b></span>
+                    <span className="chat-count"><MessageIcon />{formatCompactCount(card.interactionCount)}</span>
+                  </span>
+                </button>
+              </article>
+            ))}
           </div>
         )}
-
-        <section className="coming-soon">
-          <div>
-            <span>THE STORY CONTINUES</span>
-            <h2>更多相遇，正在路上。</h2>
-          </div>
-          <p>正式角色卡数据接入后，这里会变成持续更新的角色世界。</p>
-        </section>
       </section>
 
-      <footer className="feed-footer">
-        <Brand />
-        <p>有人设，也有温度的 AI 对话。</p>
-        <span>FIBRE · 2026</span>
+      <footer className="reference-footer">
+        <span>Supported Cards</span><i />
+        <a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>Beginner&apos;s Guide</a><a>About Us</a>
+        <small>© 2026 FIBRE. All rights reserved.</small>
       </footer>
     </main>
   );
