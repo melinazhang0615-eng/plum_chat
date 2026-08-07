@@ -1,8 +1,8 @@
 # Fibre 当前 UI 数据归属与后端扩展方案
 
 > 文档编号：TECH-06
-> 版本：v0.2
-> 状态：前端视觉验证完成；后端联调数据待实施
+> 版本：v0.3
+> 状态：P0A–P0D 已实现并完成前后端联调；P1/P2 待实施
 > 日期：2026-08-08
 > 关联文档：[TECH-03](./TECH-03-backend-agent-integration.md) · [TECH-04](./TECH-04-character-profile-hover.md) · [TECH-05](./TECH-05-chat-controls.md)
 
@@ -15,7 +15,7 @@
 3. **共享 Runtime / Platform 数据**：真实对话消息、会话运行、模型供应商调用、钱包与账本、身份和通用审核。
 4. **对象存储/CDN 资源**：角色封面、头像、徽章图和未来媒体文件；数据库只保存资源引用及元数据，不保存图片二进制。
 
-前端已经把 Profile、顶部状态和输入工具的数据整理成统一的 `CharacterExperience` 形状，并把临时数据集中到 `lib/character-experience.ts`。下一阶段即使继续使用当前抓取的参考元素，**名称、文案、统计、Profile、评论、Memory、viewer state 和 Feed 顺序也必须由后端 seed 和接口返回**；前端 fixture 只保留为故障 fallback，联调通过后删除。
+前端现已直接消费后端返回的 `FeedCharacter` 与 `CharacterExperience` 契约；名称、文案、统计、Profile、评论、Memory、viewer state 和 Feed 顺序均以后端 seed/API 为权威。原 `lib/presentation.ts`、`lib/character-experience.ts` 业务 mock 和 `presentation` query 参数已删除，十张参考图片仍按约定保留在前端 `public/`。
 
 本阶段不追求正式内容或版权清理。目标是先让“当前可见 UI 的每个数据元素”都有稳定后端来源，验证前后端契约。联调通过后，UI 同学可以继续调整布局和本地视觉资源，PM/运营可以替换后端内容数据，而无需再次改变核心接口。
 
@@ -36,12 +36,12 @@
 | --- | --- | --- |
 | 2×5 网格、卡片比例、遮罩、字体、hover、loading skeleton | CSS/React | 前端 |
 | 十张参考封面 | `public/characters/tipsy-reference/` | 联调期仍由前端托管文件，但路径由后端 `cover_ref` 返回；正式版上传对象存储/CDN |
-| 角色名、tagline、Creator、badge、是否支持语音 | `lib/presentation.ts` 临时 fixture | 联调第一批即迁入 Fibre seed/API，前端不再作为权威来源 |
-| 互动数 | fixture 中保存原始整数，前端格式化为 `48.2K` | Fibre 聚合统计表返回整数 |
-| 排序与分区 | 当前固定数组顺序 | Fibre Feed 查询与运营排序 |
-| 点击后进入哪个角色 | 当前十张卡临时映射到两个 seed 角色 | 联调与正式数据均使用独立真实 `character_id` |
+| 角色名、tagline、Creator、badge、是否支持语音 | 已由 Fibre seed/API 返回 | Fibre 后端为权威来源 |
+| 互动数 | 后端返回原始整数，前端格式化为 `48.2K` | Fibre 聚合统计表 |
+| 排序与分区 | 后端 `sort_order` 返回当前固定顺序 | Fibre Feed 查询与运营排序 |
+| 点击后进入哪个角色 | 十张卡分别使用独立 `character_id` | Fibre 角色与会话 |
 
-当前 `presentation` query 参数只用于视觉验收。后端联调时不继续保留临时的 10 张卡片映射到 2 个角色：每张参考卡 seed 为一条独立测试角色记录，角色名、文案、封面、Prompt、Greeting 和 Profile 都以自己的 `character_id` 为事实源，随后删除 `presentation` 参数。若未来明确需要“同一角色的多个剧情入口”，再新增独立 scenario/presentation 实体；MVP 不为临时映射设计长期表。
+`presentation` query 参数及“10 张卡映射到 2 个角色”的临时方案已经移除。每张参考卡均 seed 为独立测试角色，角色名、文案、封面、Prompt、Greeting 和 Profile 都以自己的 `character_id` 为事实源。若未来明确需要“同一角色的多个剧情入口”，再新增独立 scenario/presentation 实体。
 
 ### 2.3 角色 Profile
 
@@ -67,7 +67,7 @@
 | 收藏与计数 | Fibre character favorite + stats |
 | 三点菜单、显示/隐藏 Profile | 前端；重新开始仍调用现有 Fibre conversation API |
 
-点赞和收藏当前是本地 optimistic 状态。接入后端后仍可保留即时切换体验，但请求失败必须回滚，刷新后以后端状态为准。
+点赞和收藏已接入后端幂等写入；前端保留 optimistic 即时切换，请求失败回滚，刷新后以后端状态为准。
 
 ### 2.5 消息区与输入工具栏
 
@@ -83,16 +83,15 @@
 
 ## 3. 前端改造基线
 
-本轮前端完成以下收口：
+本轮前端已完成以下收口：
 
-- `lib/presentation.ts`：十张 Feed 卡片只作为有明确注释的视觉 fixture；计数保存为整数，由 `formatCompactCount()` 展示格式化。
-- `lib/character-experience.ts`：集中全部 Profile、评论、Memory、关系、点赞收藏、Role Card、Pinned 和 Inspiration mock。
-- `lib/types.ts`：新增后端目标契约 `CharacterExperience`、公开用户摘要、评论和公开 Memory 类型。
-- Feed/Chat 页面不再散落 `119`、`120`、`12.4K`、测试评论等业务值；页面只消费上述契约。
+- 删除 `lib/presentation.ts` 与 `lib/character-experience.ts` 业务 mock；十张图片仍作为前端视觉资源。
+- `lib/types.ts` 定义已落地的 `FeedCharacter`、`CharacterExperience`、公开用户摘要、评论和公开 Memory 契约。
+- Feed/Chat 页面不再保存 `119`、`120`、`12.4K`、测试评论等业务值，只消费后端契约。
 - badge、统计数、Creator、tags、评论、Memory、关系等级、章节、点赞收藏和工具栏均从契约渲染。
-- 模型选择和文本 turn 保持现有真实后端链路，不受本地 Profile fallback 影响。
+- 模型选择、文本 turn、钱包、消息历史继续走共享 Runtime/Platform；首版保持非流式。
 
-目标聚合契约：
+当前聚合契约：
 
 ```ts
 type CharacterExperience = {
@@ -407,10 +406,10 @@ Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等
 
 ## 9. 实施顺序与验收
 
-1. **P0A：migration + 测试资料**。建立公共资料、角色扩展、badge、stats 等结构。
-2. **P0B：`reference_fixture_v1` seed**。迁入当前十张参考卡、Profile、评论、Memory 和测试 Persona，验证重复执行无副作用。
-3. **P0C：Feed 与会话聚合**。Feed 返回十个独立角色；会话详情附带 `experience`；前端删除 `presentation` 和业务 mock 权威路径。
-4. **P0D：viewer state 写入**。关系等级、章节、like/favorite 真正持久化，完成 optimistic 回滚和刷新恢复测试。
+1. **P0A（已完成）：migration + 测试资料**。建立公共资料、角色扩展、badge、stats 等结构。
+2. **P0B（已完成）：`reference_fixture_v1` seed**。迁入当前十张参考卡、Profile、评论、Memory 和测试 Persona，验证重复执行无副作用。
+3. **P0C（已完成）：Feed 与会话聚合**。Feed 返回十个独立角色；会话详情附带 `experience`；前端删除 `presentation` 和业务 mock 权威路径。
+4. **P0D（已完成）：viewer state 写入**。关系、章节、like/favorite 真正持久化，完成 optimistic 回滚和刷新恢复测试。
 5. **P1：上下文工具**。Role Card、Pinned、章节接口及 Fibre 应用层编译；验证它们真实影响模型回复且不污染共享 Runtime。
 6. **P2：社区数据**。评论、评论点赞、公开 Memory、审核与分页。
 7. **以后**：正式资产迁移到对象存储，以及语音、图片、视频和图库。
@@ -418,8 +417,8 @@ Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等
 最低验收标准：
 
 - 后端 seed/API 能完整复现当前十张 Feed 卡和聊天 Profile；每张卡进入自己的角色与 Prompt。
-- 联调通过后，前端不再从 `lib/presentation.ts`、`lib/character-experience.ts` 或 query 参数读取业务权威数据；fallback 必须可观测。
+- 前端不再从本地业务 mock 或 query 参数读取业务权威数据。
 - 接口返回整数计数，前端统一格式化。
 - like/favorite 刷新后不丢失，并发请求不产生负计数或重复关系。
-- Role Card/Pinned 真实进入角色上下文，但 Runtime/Platform 没有 Fibre 业务表或 `app_id == fibre` 分支。
+- P1 完成后，Role Card/Pinned 真实进入角色上下文，但 Runtime/Platform 没有 Fibre 业务表或 `app_id == fibre` 分支。
 - Profile、评论和统计故障不影响已有文本 turn；钱包、模型切换和消息历史继续使用现有真实链路。

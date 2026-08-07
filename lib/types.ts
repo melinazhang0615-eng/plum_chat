@@ -26,6 +26,32 @@ export type Character = {
   cover_ref: string | null;
   accent_color: string;
   prompt_version: number;
+  content_rating: string;
+  capabilities: { text: boolean; voice: boolean };
+};
+
+export type FeedCharacter = Character & {
+  creator: {
+    id: string;
+    handle: string;
+    display_name: string;
+    avatar_ref: string | null;
+  } | null;
+  badges: Array<{
+    code: string;
+    display_name: string;
+    icon_ref: string | null;
+    style_token: string;
+  }>;
+  interaction_count: number;
+  stats: {
+    interaction_count: number;
+    connector_count: number;
+    comment_count: number;
+    memory_count: number;
+    like_count: number;
+    favorite_count: number;
+  };
 };
 
 export type Conversation = {
@@ -72,9 +98,8 @@ export type CharacterPublicMemory = {
 };
 
 /**
- * Target contract for the Fibre product-domain data surrounding a character.
- * The current UI uses a typed local fallback with this shape; the backend can
- * later return the same contract without changing the component structure.
+ * Backend contract for the Fibre product-domain data surrounding a character.
+ * Messages, model execution and wallet data remain shared runtime concerns.
  */
 export type CharacterExperience = {
   profile: {

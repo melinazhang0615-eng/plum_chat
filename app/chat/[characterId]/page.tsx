@@ -4,10 +4,9 @@ import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand, CoinBadge } from "@/components/brand";
-import { createConversation, getConversation, restartConversation, sendTurn, updateModel } from "@/lib/api";
-import { buildMockCharacterExperience } from "@/lib/character-experience";
-import { chatCoverByCharacter, formatCompactCount, getPresentation } from "@/lib/presentation";
-import type { ChatMessage, Conversation, ModelProfile } from "@/lib/types";
+import { createConversation, getConversation, restartConversation, sendTurn, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { formatCompactCount } from "@/lib/format";
+import type { CharacterExperience, ChatMessage, Conversation, ModelProfile } from "@/lib/types";
 
 function formatTime(value?: string) {
   if (!value) return "刚刚";
@@ -97,6 +96,7 @@ export default function ChatPage() {
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [experience, setExperience] = useState<CharacterExperience | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [balance, setBalance] = useState(0);
@@ -112,6 +112,7 @@ export default function ChatPage() {
   const [showScrollLatest, setShowScrollLatest] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
   const [favorited, setFavorited] = useState<boolean | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"model" | "role" | "pinned" | "more" | null>(null);
 
@@ -119,8 +120,6 @@ export default function ChatPage() {
     () => models.find((item) => item.profile === conversation?.model_profile),
     [models, conversation?.model_profile],
   );
-  const presentation = getPresentation(search.get("presentation"));
-
   async function load() {
     setLoading(true);
     setError(null);
@@ -129,14 +128,14 @@ export default function ChatPage() {
       if (!conversationId) {
         const created = await createConversation(params.characterId);
         conversationId = created.conversation.id;
-        const presentationQuery = search.get("presentation");
-        router.replace(`/chat/${params.characterId}?conversation=${conversationId}${presentationQuery ? `&presentation=${presentationQuery}` : ""}`);
+        router.replace(`/chat/${params.characterId}?conversation=${conversationId}`);
       }
       const detail = await getConversation(conversationId);
       setConversation(detail.conversation);
       setMessages(detail.messages);
       setModels(detail.models);
       setBalance(detail.wallet.balance);
+      setExperience(detail.experience);
       setLiked(null);
       setFavorited(null);
     } catch {
@@ -215,9 +214,9 @@ export default function ChatPage() {
       setConversation(result.conversation);
       setMessages([]);
       setBalance(result.wallet.balance);
+      setExperience(result.experience);
       setShowRestart(false);
-      const presentationQuery = search.get("presentation");
-      router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}${presentationQuery ? `&presentation=${presentationQuery}` : ""}`);
+      router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}`);
     } catch {
       setError("重新开始失败，请稍后再试。");
     } finally {
@@ -226,15 +225,14 @@ export default function ChatPage() {
   }
 
   if (loading) return <ChatLoading />;
-  if (!conversation) {
+  if (!conversation || !experience) {
     return <main className="fatal-state"><h1>没有找到这段对话</h1><p>{error}</p><button onClick={() => router.push("/")}>返回角色列表</button></main>;
   }
 
   const character = conversation.character;
-  const cover = presentation?.cover ?? chatCoverByCharacter[character.id] ?? "/characters/kai.svg";
-  const displayName = presentation?.name ?? character.display_name;
-  const tagline = presentation?.tagline ?? character.tagline;
-  const experience = buildMockCharacterExperience(presentation, character);
+  const cover = character.cover_ref ?? "/characters/kai.svg";
+  const displayName = character.display_name;
+  const tagline = character.tagline;
   const { profile, viewer_state: viewerState, conversation_tools: conversationTools } = experience;
   const primaryBadge = profile.badges[0];
   const viewerHasLiked = liked ?? viewerState.has_liked;
@@ -263,6 +261,54 @@ export default function ChatPage() {
       else await navigator.clipboard.writeText(window.location.href);
     } catch {
       // Closing the native share sheet is not an error the UI needs to surface.
+    }
+  }
+
+  async function toggleLike() {
+    if (reactionBusy) return;
+    const next = !viewerHasLiked;
+    setLiked(next);
+    setReactionBusy(true);
+    try {
+      const result = await setCharacterLike(character.id, next);
+      setExperience((current) => current ? {
+        ...current,
+        viewer_state: {
+          ...current.viewer_state,
+          has_liked: result.active,
+          like_count: result.count,
+        },
+      } : current);
+      setLiked(null);
+    } catch {
+      setLiked(null);
+      setError("点赞状态保存失败，请重试。");
+    } finally {
+      setReactionBusy(false);
+    }
+  }
+
+  async function toggleFavorite() {
+    if (reactionBusy) return;
+    const next = !viewerHasFavorited;
+    setFavorited(next);
+    setReactionBusy(true);
+    try {
+      const result = await setCharacterFavorite(character.id, next);
+      setExperience((current) => current ? {
+        ...current,
+        viewer_state: {
+          ...current.viewer_state,
+          is_favorite: result.active,
+          favorite_count: result.count,
+        },
+      } : current);
+      setFavorited(null);
+    } catch {
+      setFavorited(null);
+      setError("收藏状态保存失败，请重试。");
+    } finally {
+      setReactionBusy(false);
     }
   }
 
@@ -367,8 +413,8 @@ export default function ChatPage() {
                 <section className="mobile-profile-hero">
                   <span><Image src={cover} alt={displayName} fill sizes="82px" /></span>
                   <div className="mobile-profile-social">
-                    <button className={viewerHasLiked ? "active" : ""} onClick={() => setLiked(!viewerHasLiked)}><ThumbIcon /><b>{visibleLikeCount}</b><small>Likes</small></button>
-                    <button className={viewerHasFavorited ? "active" : ""} onClick={() => setFavorited(!viewerHasFavorited)}><HeartIcon /><b>{visibleFavoriteCount}</b><small>Favorites</small></button>
+                    <button className={viewerHasLiked ? "active" : ""} disabled={reactionBusy} onClick={() => void toggleLike()}><ThumbIcon /><b>{visibleLikeCount}</b><small>Likes</small></button>
+                    <button className={viewerHasFavorited ? "active" : ""} disabled={reactionBusy} onClick={() => void toggleFavorite()}><HeartIcon /><b>{visibleFavoriteCount}</b><small>Favorites</small></button>
                   </div>
                 </section>
                 <h1>{displayName}{primaryBadge && <i title={primaryBadge.display_name}>✦</i>}</h1>
@@ -485,8 +531,8 @@ export default function ChatPage() {
             <div className="conversation-toolbar-actions">
               <button className="conversation-stat-pill has-tooltip" data-tooltip="Story chapter" aria-label={`当前故事章节 ${viewerState.current_chapter}`}><BookIcon /><strong>{viewerState.current_chapter}</strong></button>
               <button className="conversation-stat-pill audio-mode has-tooltip" data-tooltip="Auto voice · coming soon" aria-label="自动朗读，暂未开放" disabled><MutedAutoIcon /><strong>Auto</strong></button>
-              <button className={`conversation-stat-pill has-tooltip${viewerHasLiked ? " active" : ""}`} data-tooltip={viewerHasLiked ? "Unlike character" : "Like character"} aria-label={viewerHasLiked ? "取消点赞" : "点赞角色"} aria-pressed={viewerHasLiked} onClick={() => setLiked(!viewerHasLiked)}><ThumbIcon /><strong>{visibleLikeCount}</strong></button>
-              <button className={`conversation-stat-pill favorite-stat has-tooltip${viewerHasFavorited ? " active" : ""}`} data-tooltip={viewerHasFavorited ? "Remove favorite" : "Favorite character"} aria-label={viewerHasFavorited ? "取消收藏角色" : "收藏角色"} aria-pressed={viewerHasFavorited} onClick={() => setFavorited(!viewerHasFavorited)}><HeartIcon /><strong>{visibleFavoriteCount}</strong></button>
+              <button className={`conversation-stat-pill has-tooltip${viewerHasLiked ? " active" : ""}`} data-tooltip={viewerHasLiked ? "Unlike character" : "Like character"} aria-label={viewerHasLiked ? "取消点赞" : "点赞角色"} aria-pressed={viewerHasLiked} disabled={reactionBusy} onClick={() => void toggleLike()}><ThumbIcon /><strong>{visibleLikeCount}</strong></button>
+              <button className={`conversation-stat-pill favorite-stat has-tooltip${viewerHasFavorited ? " active" : ""}`} data-tooltip={viewerHasFavorited ? "Remove favorite" : "Favorite character"} aria-label={viewerHasFavorited ? "取消收藏角色" : "收藏角色"} aria-pressed={viewerHasFavorited} disabled={reactionBusy} onClick={() => void toggleFavorite()}><HeartIcon /><strong>{visibleFavoriteCount}</strong></button>
               <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
             </div>
             {showChatMenu && (

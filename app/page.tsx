@@ -1,12 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand, CoinBadge } from "@/components/brand";
 import { createConversation, getBootstrap, getFeed } from "@/lib/api";
-import { feedPresentations, formatCompactCount, type FeedPresentation } from "@/lib/presentation";
-import type { Character } from "@/lib/types";
+import { formatCompactCount } from "@/lib/format";
+import type { FeedCharacter } from "@/lib/types";
 
 function SearchIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
@@ -38,16 +38,11 @@ function FeedSkeleton() {
 
 export default function FeedPage() {
   const router = useRouter();
-  const [characters, setCharacters] = useState<Character[]>([]);
+  const [characters, setCharacters] = useState<FeedCharacter[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const characterMap = useMemo(
-    () => new Map(characters.map((character) => [character.id, character])),
-    [characters],
-  );
 
   async function load() {
     setLoading(true);
@@ -67,18 +62,13 @@ export default function FeedPage() {
     void load();
   }, []);
 
-  async function openCharacter(card: FeedPresentation) {
+  async function openCharacter(character: FeedCharacter) {
     if (openingId) return;
-    const backendCharacter = characterMap.get(card.characterId) ?? characters[0];
-    if (!backendCharacter) {
-      setError("角色数据还没有准备好，请稍后重试。");
-      return;
-    }
-    setOpeningId(card.id);
+    setOpeningId(character.id);
     setError(null);
     try {
-      const result = await createConversation(backendCharacter.id);
-      router.push(`/chat/${backendCharacter.id}?conversation=${result.conversation.id}&presentation=${card.id}`);
+      const result = await createConversation(character.id);
+      router.push(`/chat/${character.id}?conversation=${result.conversation.id}`);
     } catch {
       setError("进入聊天失败了，请稍后再试。");
       setOpeningId(null);
@@ -123,36 +113,40 @@ export default function FeedPage() {
           <FeedSkeleton />
         ) : (
           <div className="tipsy-grid">
-            {feedPresentations.map((card, index) => (
-              <article className="tipsy-card" key={card.id}>
+            {characters.map((character, index) => {
+              const badge = character.badges[0];
+              const creator = character.creator?.display_name ?? "fibre";
+              return (
+              <article className="tipsy-card" key={character.id}>
                 <button
                   className="card-hit-area"
-                  onClick={() => void openCharacter(card)}
+                  onClick={() => void openCharacter(character)}
                   disabled={openingId !== null}
-                  aria-label={`和 ${card.name} 开始聊天`}
+                  aria-label={`和 ${character.display_name} 开始聊天`}
                 >
                   <Image
                     className="tipsy-card-cover"
-                    src={card.cover}
-                    alt={card.name}
+                    src={character.cover_ref ?? "/characters/kai.svg"}
+                    alt={character.display_name}
                     fill
                     priority={index < 5}
                     sizes="(max-width: 700px) 50vw, (max-width: 1100px) 25vw, 20vw"
                   />
                   <span className="card-darken" />
-                  {card.badge && <span className="card-badge">✦ {card.badge}</span>}
-                  {openingId === card.id && <span className="opening-card">Entering story…</span>}
+                  {badge && <span className="card-badge">✦ {badge.display_name}</span>}
+                  {openingId === character.id && <span className="opening-card">Entering story…</span>}
                   <span className="card-copy">
-                    <strong>{card.name}{card.hasVoice && <VoiceIcon />}</strong>
-                    <span>{card.tagline}</span>
+                    <strong>{character.display_name}{character.capabilities.voice && <VoiceIcon />}</strong>
+                    <span>{character.tagline}</span>
                   </span>
                   <span className="card-footer">
-                    <span className="creator"><i>{card.creator.slice(1, 2).toUpperCase()}</i><b>{card.creator}</b></span>
-                    <span className="chat-count"><MessageIcon />{formatCompactCount(card.interactionCount)}</span>
+                    <span className="creator"><i>{creator.slice(0, 1).toUpperCase()}</i><b>@{creator}</b></span>
+                    <span className="chat-count"><MessageIcon />{formatCompactCount(character.interaction_count)}</span>
                   </span>
                 </button>
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -1,4 +1,4 @@
-import type { Character, ChatMessage, Conversation, ModelProfile, Wallet } from "./types";
+import type { CharacterExperience, ChatMessage, Conversation, FeedCharacter, ModelProfile, Wallet } from "./types";
 
 const BASE = "/api/v1/products/fibre";
 
@@ -24,7 +24,7 @@ export function getBootstrap() {
 }
 
 export function getFeed() {
-  return request<{ status: string; items: Character[] }>("/feed");
+  return request<{ status: string; items: FeedCharacter[] }>("/feed");
 }
 
 export function createConversation(characterId: string) {
@@ -41,6 +41,7 @@ export function getConversation(conversationId: string) {
     messages: ChatMessage[];
     models: ModelProfile[];
     wallet: Wallet;
+    experience: CharacterExperience;
   }>(`/conversations/${conversationId}`);
 }
 
@@ -57,7 +58,22 @@ export function restartConversation(conversationId: string) {
     conversation: Conversation;
     messages: ChatMessage[];
     wallet: Wallet;
+    experience: CharacterExperience;
   }>(`/conversations/${conversationId}/restart`, { method: "POST" });
+}
+
+export function setCharacterLike(characterId: string, active: boolean) {
+  return request<{ status: string; active: boolean; count: number }>(
+    `/characters/${characterId}/like`,
+    { method: active ? "PUT" : "DELETE" },
+  );
+}
+
+export function setCharacterFavorite(characterId: string, active: boolean) {
+  return request<{ status: string; active: boolean; count: number }>(
+    `/characters/${characterId}/favorite`,
+    { method: active ? "PUT" : "DELETE" },
+  );
 }
 
 export function sendTurn(conversationId: string, text: string, requestId: string) {

@@ -275,13 +275,16 @@ svg { display: block; }
   .feed-controls { min-height: 48px; }
   .feed-tabs { max-width: calc(100vw - 62px); gap: 2px; }
   .feed-tabs button { height: 34px; padding: 0 12px; font-size: 11px; }
-  .tipsy-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .tipsy-card { width: 100%; max-width: 420px; aspect-ratio: .76; margin: 0 auto; border-radius: 8px; }
-  .card-copy { left: 14px; right: 14px; bottom: 48px; }
-  .card-copy strong { font-size: 20px; }
-  .card-copy > span { height: auto; max-height: 38px; font-size: 11px; }
-  .card-footer { height: 42px; padding: 0 12px; }
-  .creator b { max-width: 150px; }.creator i { width: 25px; height: 25px; }.chat-count { font-size: 10px; }
+  .tipsy-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
+  .tipsy-card { width: 100%; aspect-ratio: .588; margin: 0; border-radius: 7px; }
+  .card-badge { top: 7px; left: 7px; padding: 4px 6px; font-size: 7px; }
+  .card-copy { left: 9px; right: 9px; bottom: 40px; gap: 4px; }
+  .card-copy strong { font-size: 14px; }
+  .card-copy > span { height: 30px; font-size: 9px; }
+  .card-footer { height: 34px; padding: 0 8px; }
+  .creator { gap: 4px; }
+  .creator b { max-width: 72px; font-size: 8px; }.creator i { width: 20px; height: 20px; font-size: 8px; }.chat-count { font-size: 8px; }
+  .chat-count svg { width: 11px; height: 11px; }
   .reference-footer { display: none; }
   .chat-site-header .header-circle { display: none; }
   .reference-chat-workspace { width: 100%; height: calc(100dvh - 52px); margin: 0; }
