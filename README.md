@@ -6,6 +6,9 @@
 - [总体技术架构](./docs/TECH-01-architecture.md)
 - [前端技术方案](./docs/TECH-02-frontend.md)
 - [后端与 Agent 框架集成方案](./docs/TECH-03-backend-agent-integration.md)
+- [角色 Profile Hover 与字段草案](./docs/TECH-04-character-profile-hover.md)
+- [聊天页控件语义与实现边界](./docs/TECH-05-chat-controls.md)
+- [当前 UI 数据归属与后端扩展方案](./docs/TECH-06-data-ownership-and-backend-plan.md)
 
 ## 本地联调
 
