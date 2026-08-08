@@ -29,28 +29,28 @@
 
 ### 3.1 Role Card
 
-属于 Fibre 业务域，不应直接塞进共享 Human-AI Runtime 的业务表。建议新增：
+属于 Plum 业务域，不应直接塞进共享 Human-AI Runtime 的业务表。建议新增：
 
-- `fibre_user_personas`：用户可复用身份卡；
-- `fibre_conversation_personas`：某段对话选中的身份卡及必要快照；
-- 对话请求进入 Runtime 前，由 Fibre 应用服务将生效的身份卡编译成受控上下文。
+- `plum_user_personas`：用户可复用身份卡；
+- `plum_conversation_personas`：某段对话选中的身份卡及必要快照；
+- 对话请求进入 Runtime 前，由 Plum 应用服务将生效的身份卡编译成受控上下文。
 
 首版测试账号可有一张默认身份卡，但正式数据必须归属用户，支持显式选择和取消。
 
 ### 3.2 Pinned Memory
 
-建议新增 `fibre_conversation_pins`，至少包含：
+建议新增 `plum_conversation_pins`，至少包含：
 
-- Fibre conversation ID；
+- Plum conversation ID；
 - 来源消息或公开 Memory ID（可为空）；
 - 用户确认过的文本快照；
 - 排序、启用状态和创建时间。
 
-Pinned 是用户主动维护的私人对话上下文，不等同于 Profile 页的公开 Memory，也不应直接引用 Runtime Session ID。发送消息前由 Fibre 应用服务聚合，再交给共享 Runtime。
+Pinned 是用户主动维护的私人对话上下文，不等同于 Profile 页的公开 Memory，也不应直接引用 Runtime Session ID。发送消息前由 Plum 应用服务聚合，再交给共享 Runtime。
 
 ### 3.3 多媒体
 
-图片、视频和图库不属于当前文本聊天 MVP。未来接入时应作为 Fibre 的异步媒体任务与资产域实现，只复用鉴权、任务队列、对象存储等业务无关技术模块，不把它们耦合进核心文本对话表。
+图片、视频和图库不属于当前文本聊天 MVP。未来接入时应作为 Plum 的异步媒体任务与资产域实现，只复用鉴权、任务队列、对象存储等业务无关技术模块，不把它们耦合进核心文本对话表。
 
 ## 4. 交互原则
 

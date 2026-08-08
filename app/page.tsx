@@ -1,12 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand, CoinBadge } from "@/components/brand";
-import { createConversation, getBootstrap, getFeed } from "@/lib/api";
+import { ApiError, createConversation, getBootstrap, getFeed, logout, redeemAccessCode } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
-import type { FeedCharacter } from "@/lib/types";
+import type { AuthUser, FeedCharacter } from "@/lib/types";
 
 function SearchIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
@@ -36,6 +36,46 @@ function FeedSkeleton() {
   );
 }
 
+function AccessDialog({ onAuthenticated }: { onAuthenticated: (user: AuthUser) => void }) {
+  const [displayName, setDisplayName] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!displayName.trim() || !accessCode.trim() || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await redeemAccessCode(accessCode.trim(), displayName.trim());
+      onAuthenticated(result.user);
+    } catch (loginError) {
+      setError(loginError instanceof ApiError && loginError.message === "invalid_access_code"
+        ? "邀请码无效或已过期，请联系测试负责人。"
+        : "暂时无法登录，请稍后再试。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="access-overlay" role="dialog" aria-modal="true" aria-labelledby="access-title">
+      <form className="access-card" onSubmit={submit}>
+        <Brand />
+        <span className="access-kicker">PRIVATE BETA</span>
+        <h1 id="access-title">进入 Plum Chat</h1>
+        <p>使用测试负责人发给你的一次性邀请码。你的聊天、金币和收藏都会独立保存。</p>
+        <label><span>你的称呼</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="例如：Alice" /></label>
+        <label><span>邀请码</span><input value={accessCode} onChange={(event) => setAccessCode(event.target.value)} maxLength={160} autoComplete="one-time-code" placeholder="plum_…" /></label>
+        {error && <div className="access-error">{error}</div>}
+        <button className="access-submit" disabled={submitting || !displayName.trim() || !accessCode.trim()}>{submitting ? "正在进入…" : "进入 Plum Chat"}</button>
+        <small>邀请码只会绑定一个测试账号，请勿转发。</small>
+      </form>
+    </div>
+  );
+}
+
 export default function FeedPage() {
   const router = useRouter();
   const [characters, setCharacters] = useState<FeedCharacter[]>([]);
@@ -43,6 +83,8 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -50,12 +92,27 @@ export default function FeedPage() {
     try {
       const [bootstrap, feed] = await Promise.all([getBootstrap(), getFeed()]);
       setBalance(bootstrap.wallet.balance);
+      setUser(bootstrap.user);
       setCharacters(feed.items);
-    } catch {
+      setAuthRequired(false);
+    } catch (loadError) {
+      if (loadError instanceof ApiError && loadError.status === 401) {
+        setAuthRequired(true);
+        setCharacters([]);
+        return;
+      }
       setError("暂时没能连接角色世界，请确认本地后端已经启动。");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function signOut() {
+    try { await logout(); } catch { /* session may already be gone */ }
+    setUser(null);
+    setBalance(0);
+    setCharacters([]);
+    setAuthRequired(true);
   }
 
   useEffect(() => {
@@ -69,7 +126,12 @@ export default function FeedPage() {
     try {
       const result = await createConversation(character.id);
       router.push(`/chat/${character.id}?conversation=${result.conversation.id}`);
-    } catch {
+    } catch (openError) {
+      if (openError instanceof ApiError && openError.status === 401) {
+        setAuthRequired(true);
+        setOpeningId(null);
+        return;
+      }
       setError("进入聊天失败了，请稍后再试。");
       setOpeningId(null);
     }
@@ -80,7 +142,7 @@ export default function FeedPage() {
       <header className="tipsy-header">
         <div className="tipsy-header-left">
           <Brand />
-          <button className="community-pill" aria-label="Fibre 社区"><span>☁</span><i />···</button>
+          <button className="community-pill" aria-label="Plum 社区"><span>☁</span><i />···</button>
           <button className="download-pill"><span>▣</span> Download</button>
         </div>
         <div className="tipsy-header-right">
@@ -88,7 +150,7 @@ export default function FeedPage() {
           <button className="create-pill">Create</button>
           <button className="header-circle" aria-label="切换语言"><GlobeIcon /></button>
           <CoinBadge balance={balance} compact />
-          <button className="login-pill">Login</button>
+          {user ? <button className="login-pill" onClick={() => void signOut()} title="退出当前测试账号">{user.display_name}</button> : <button className="login-pill" onClick={() => setAuthRequired(true)}>Login</button>}
         </div>
       </header>
 
@@ -115,7 +177,7 @@ export default function FeedPage() {
           <div className="tipsy-grid">
             {characters.map((character, index) => {
               const badge = character.badges[0];
-              const creator = character.creator?.display_name ?? "fibre";
+              const creator = character.creator?.display_name ?? "plum";
               return (
               <article className="tipsy-card" key={character.id}>
                 <button
@@ -154,8 +216,9 @@ export default function FeedPage() {
       <footer className="reference-footer">
         <span>Supported Cards</span><i />
         <a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>Beginner&apos;s Guide</a><a>About Us</a>
-        <small>© 2026 FIBRE. All rights reserved.</small>
+        <small>© 2026 PLUM. All rights reserved.</small>
       </footer>
+      {authRequired && <AccessDialog onAuthenticated={(authenticatedUser) => { setUser(authenticatedUser); void load(); }} />}
     </main>
   );
 }

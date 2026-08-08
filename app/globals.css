@@ -8,6 +8,20 @@
 }
 
 * { box-sizing: border-box; }
+
+.access-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 22px; background: rgba(7, 7, 10, .82); backdrop-filter: blur(18px); }
+.access-card { width: min(430px, 100%); display: flex; flex-direction: column; gap: 16px; padding: 34px; border: 1px solid rgba(255,255,255,.13); border-radius: 26px; color: #fff; background: radial-gradient(circle at 90% 0, rgba(113,66,255,.22), transparent 42%), #15151a; box-shadow: 0 28px 90px rgba(0,0,0,.55); }
+.access-card .brand { align-self: flex-start; }
+.access-kicker { width: fit-content; padding: 5px 9px; border-radius: 999px; color: #d8ccff; background: rgba(122,84,255,.16); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+.access-card h1 { margin: 0; font-size: 30px; letter-spacing: -.04em; }
+.access-card > p { margin: -6px 0 4px; color: #a9a7b2; font-size: 14px; line-height: 1.55; }
+.access-card label { display: flex; flex-direction: column; gap: 7px; color: #d8d7dc; font-size: 12px; font-weight: 700; }
+.access-card input { width: 100%; height: 48px; padding: 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; outline: none; color: #fff; background: rgba(255,255,255,.055); font: inherit; }
+.access-card input:focus { border-color: #8d72ff; box-shadow: 0 0 0 3px rgba(112,76,255,.16); }
+.access-error { padding: 10px 12px; border-radius: 10px; color: #ffc3ca; background: rgba(200,47,69,.18); font-size: 12px; }
+.access-submit { height: 49px; border: 0; border-radius: 13px; color: #fff; background: linear-gradient(135deg, #754cff, #9f63ff); font-weight: 800; cursor: pointer; }
+.access-submit:disabled { opacity: .45; cursor: default; }
+.access-card > small { color: #777580; text-align: center; }
 html { background: #180b0b; }
 body { margin: 0; color: var(--ink); background: #180b0b; font-family: "DM Sans", "Noto Sans SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 button, textarea, select { font: inherit; }

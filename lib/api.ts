@@ -1,26 +1,53 @@
-import type { CharacterExperience, ChatMessage, Conversation, FeedCharacter, ModelProfile, Wallet } from "./types";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, ModelProfile, Wallet } from "./types";
 
-const BASE = "/api/v1/products/fibre";
+const BASE = "/api/v1/products/plum";
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+  }
+}
+
+function cookieValue(name: string) {
+  if (typeof document === "undefined") return "";
+  const prefix = `${encodeURIComponent(name)}=`;
+  return document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const csrf = !["GET", "HEAD", "OPTIONS"].includes(method) ? cookieValue("plum_csrf") : "";
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     cache: "no-store",
+    credentials: "same-origin",
     headers: {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
       ...init?.headers,
     },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = typeof payload.detail === "string" ? payload.detail : "request_failed";
-    throw new Error(detail);
+    throw new ApiError(detail, response.status);
   }
   return payload as T;
 }
 
 export function getBootstrap() {
-  return request<{ status: string; wallet: Wallet; models: ModelProfile[] }>("/bootstrap");
+  return request<{ status: string; user: AuthUser; wallet: Wallet; models: ModelProfile[] }>("/bootstrap");
+}
+
+export function redeemAccessCode(accessCode: string, displayName: string) {
+  return request<{ status: string; user: AuthUser; wallet: Wallet; expires_at: string }>("/auth/access-code", {
+    method: "POST",
+    body: JSON.stringify({ access_code: accessCode, display_name: displayName }),
+  });
+}
+
+export function logout() {
+  return request<{ status: string }>("/auth/session/current", { method: "DELETE" });
 }
 
 export function getFeed() {
