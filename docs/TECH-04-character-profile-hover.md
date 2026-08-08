@@ -7,7 +7,7 @@
 
 聊天页的角色立绘默认保持纯视觉展示。鼠标进入立绘后，渐显一层可滚动的角色资料浮层，让用户在不离开当前对话的前提下了解角色、创作者、社区反馈和公开故事记忆。
 
-该区域属于 Fibre 产品/社区业务域。它可以引用现有对话和角色，但不应进入共享 Human-AI Runtime；共享 Runtime 继续只负责用户与 AI 的核心对话执行。
+该区域属于 Plum 产品/社区业务域。它可以引用现有对话和角色，但不应进入共享 Human-AI Runtime；共享 Runtime 继续只负责用户与 AI 的核心对话执行。
 
 ## 2. 参考交互拆解
 
@@ -39,7 +39,7 @@
 
 | 前端字段 | 类型 | 含义 | 建议来源 |
 | --- | --- | --- | --- |
-| `character.id` | string | Fibre 角色业务 ID；不是 Runtime Session ID | 现有角色表 |
+| `character.id` | string | Plum 角色业务 ID；不是 Runtime Session ID | 现有角色表 |
 | `character.display_name` | string | 展示名称 | 现有角色表 |
 | `character.avatar_ref` | string/null | Profile 小头像 | 现有角色表 |
 | `character.cover_ref` | string/null | 全尺寸立绘 | 现有角色表 |
@@ -74,9 +74,9 @@
 
 ## 4. 建议数据库实体
 
-以下为逻辑结构，命名可按后端现有 Fibre 表规范调整。
+以下为逻辑结构，命名可按后端现有 Plum 表规范调整。
 
-### `fibre_character_profiles`
+### `plum_character_profiles`
 
 角色表的一对一产品扩展。只存角色 Profile 业务属性，不复制 Prompt 或 Runtime 配置。
 
@@ -90,21 +90,21 @@
 
 名称、tagline、intro、avatar、cover 已在现有角色实体中时，应继续复用现有字段。
 
-### `fibre_character_tags` / `fibre_character_tag_assignments`
+### `plum_character_tags` / `plum_character_tag_assignments`
 
 当标签需要用于 Feed 筛选、运营和排序时建议规范化；若短期只展示，可继续沿用现有 JSON 字段。
 
 - tag：`id`、`slug`、`display_name`、`sort_order`、`status`
 - assignment：`character_id`、`tag_id`、`sort_order`
 
-### `fibre_character_badges` / `fibre_character_badge_assignments`
+### `plum_character_badges` / `plum_character_badge_assignments`
 
 - badge：`id`、`code`、`display_name`、`icon_ref`、`style_token`
 - assignment：`character_id`、`badge_id`、`starts_at`、`ends_at`
 
-### `fibre_character_connections`
+### `plum_character_connections`
 
-表示某个用户是否真正与角色建立过关系，属于 Fibre 业务域，不属于共享 Runtime。
+表示某个用户是否真正与角色建立过关系，属于 Plum 业务域，不属于共享 Runtime。
 
 - `user_id`
 - `character_id`
@@ -115,9 +115,9 @@
 - `state`
 - 唯一键：`(user_id, character_id)`
 
-对话成功后由 Fibre 应用服务幂等更新；不要让 Runtime 直接维护产品统计。
+对话成功后由 Plum 应用服务幂等更新；不要让 Runtime 直接维护产品统计。
 
-### `fibre_character_stats`
+### `plum_character_stats`
 
 用于 Feed 和 Profile 的反范式聚合快照，避免每次打开 Profile 扫描消息和关系表。
 
@@ -131,7 +131,7 @@
 
 计数由事件/异步任务更新，必要时提供离线重算任务。
 
-### `fibre_character_comments`
+### `plum_character_comments`
 
 - `id`
 - `character_id`
@@ -146,7 +146,7 @@
 - `updated_at`
 - `deleted_at`
 
-### `fibre_character_comment_likes`
+### `plum_character_comment_likes`
 
 - `comment_id`
 - `user_id`
@@ -155,14 +155,14 @@
 
 点赞接口需幂等，同时异步/事务内维护 `like_count`。
 
-### `fibre_character_memories`
+### `plum_character_memories`
 
 这里的 Memory 建议定义为用户主动发布的“公开故事快照”，不是模型的私有长期记忆。
 
 - `id`
 - `character_id`
 - `owner_user_id`
-- `fibre_conversation_id`
+- `plum_conversation_id`
 - `title`
 - `summary`
 - `cover_ref`
@@ -174,13 +174,13 @@
 - `created_at`
 - `updated_at`
 
-只引用 Fibre 业务会话 ID，不直接引用共享 Runtime Session ID。公开 Memory 必须由用户主动发布，不能默认暴露私人聊天内容。
+只引用 Plum 业务会话 ID，不直接引用共享 Runtime Session ID。公开 Memory 必须由用户主动发布，不能默认暴露私人聊天内容。
 
 ## 5. 建议 API
 
 ### Profile 首屏聚合接口
 
-`GET /api/v1/products/fibre/characters/{character_id}/profile?comments_limit=2&memories_limit=3`
+`GET /api/v1/products/plum/characters/{character_id}/profile?comments_limit=2&memories_limit=3`
 
 ```json
 {

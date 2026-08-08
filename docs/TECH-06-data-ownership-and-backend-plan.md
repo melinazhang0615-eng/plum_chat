@@ -1,4 +1,4 @@
-# Fibre 当前 UI 数据归属与后端扩展方案
+# Plum 当前 UI 数据归属与后端扩展方案
 
 > 文档编号：TECH-06
 > 版本：v0.3
@@ -11,7 +11,7 @@
 当前 UI 中的数据分成四类：
 
 1. **前端代码与静态资源**：布局、SVG 图标、CSS、交互状态，以及联调期暂存在 `public/` 的十张参考角色图片。
-2. **Fibre 后端业务数据**：Feed 内容、角色公开资料、社区互动、用户与角色关系、点赞收藏、Role Card、Pinned、章节。
+2. **Plum 后端业务数据**：Feed 内容、角色公开资料、社区互动、用户与角色关系、点赞收藏、Role Card、Pinned、章节。
 3. **共享 Runtime / Platform 数据**：真实对话消息、会话运行、模型供应商调用、钱包与账本、身份和通用审核。
 4. **对象存储/CDN 资源**：角色封面、头像、徽章图和未来媒体文件；数据库只保存资源引用及元数据，不保存图片二进制。
 
@@ -28,7 +28,7 @@
 | Logo、搜索/语言/创建等 SVG 图标、排版和 hover | 前端代码 | 前端 |
 | 导航标签、Coming soon、版权及法律链接文案 | 前端常量；上线前替换 | 前端配置或 CMS，不建核心业务表 |
 | 金币余额 | 已从 `/bootstrap`、会话和 turn 响应读取 | Platform 钱包/账本，后端为权威 |
-| 登录按钮 | 当前仅视觉 | 正式身份系统，非本轮范围 |
+| 登录按钮 | 已接邀请码登录与退出 | Plum 公网内测身份；正式账号升级后续替换 |
 
 ### 2.2 Feed 卡片
 
@@ -36,10 +36,10 @@
 | --- | --- | --- |
 | 2×5 网格、卡片比例、遮罩、字体、hover、loading skeleton | CSS/React | 前端 |
 | 十张参考封面 | `public/characters/tipsy-reference/` | 联调期仍由前端托管文件，但路径由后端 `cover_ref` 返回；正式版上传对象存储/CDN |
-| 角色名、tagline、Creator、badge、是否支持语音 | 已由 Fibre seed/API 返回 | Fibre 后端为权威来源 |
-| 互动数 | 后端返回原始整数，前端格式化为 `48.2K` | Fibre 聚合统计表 |
-| 排序与分区 | 后端 `sort_order` 返回当前固定顺序 | Fibre Feed 查询与运营排序 |
-| 点击后进入哪个角色 | 十张卡分别使用独立 `character_id` | Fibre 角色与会话 |
+| 角色名、tagline、Creator、badge、是否支持语音 | 已由 Plum seed/API 返回 | Plum 后端为权威来源 |
+| 互动数 | 后端返回原始整数，前端格式化为 `48.2K` | Plum 聚合统计表 |
+| 排序与分区 | 后端 `sort_order` 返回当前固定顺序 | Plum Feed 查询与运营排序 |
+| 点击后进入哪个角色 | 十张卡分别使用独立 `character_id` | Plum 角色与会话 |
 
 `presentation` query 参数及“10 张卡映射到 2 个角色”的临时方案已经移除。每张参考卡均 seed 为独立测试角色，角色名、文案、封面、Prompt、Greeting 和 Profile 都以自己的 `character_id` 为事实源。若未来明确需要“同一角色的多个剧情入口”，再新增独立 scenario/presentation 实体。
 
@@ -49,23 +49,23 @@
 | --- | --- |
 | Profile 展开/隐藏、hover 渐显、滚动位置、玻璃效果 | 前端 |
 | 封面/头像文件 | 对象存储/CDN；引用保存在角色表 |
-| 名称、tagline、Creator、内容分级 | Fibre 角色/Profile 表 |
-| tags、badges | Fibre 标签/徽章及关联数据 |
-| Interactions、Connectors、评论数、公开 Memory 数 | Fibre 聚合统计 |
-| Hot Comments、评论点赞状态 | Fibre 评论域 |
-| Profile Memory | Fibre 用户主动发布的公开故事快照；不是 Runtime 私有记忆 |
+| 名称、tagline、Creator、内容分级 | Plum 角色/Profile 表 |
+| tags、badges | Plum 标签/徽章及关联数据 |
+| Interactions、Connectors、评论数、公开 Memory 数 | Plum 聚合统计 |
+| Hot Comments、评论点赞状态 | Plum 评论域 |
+| Profile Memory | Plum 用户主动发布的公开故事快照；不是 Runtime 私有记忆 |
 
 ### 2.4 聊天顶部
 
 | 控件 | 最终归属 |
 | --- | --- |
 | 角色头像、布局、tooltip、弹层开关 | 前端 |
-| `Lv`、XP | Fibre 用户—角色关系 |
-| 书本 + 章节号 | Fibre conversation chapter |
+| `Lv`、XP | Plum 用户—角色关系 |
+| 书本 + 章节号 | Plum conversation chapter |
 | Auto voice | 首版禁用；以后属于多媒体/偏好能力 |
-| 点赞与计数 | Fibre character like + stats |
-| 收藏与计数 | Fibre character favorite + stats |
-| 三点菜单、显示/隐藏 Profile | 前端；重新开始仍调用现有 Fibre conversation API |
+| 点赞与计数 | Plum character like + stats |
+| 收藏与计数 | Plum character favorite + stats |
+| 三点菜单、显示/隐藏 Profile | 前端；重新开始仍调用现有 Plum conversation API |
 
 点赞和收藏已接入后端幂等写入；前端保留 optimistic 即时切换，请求失败回滚，刷新后以后端状态为准。
 
@@ -74,12 +74,12 @@
 | 元素 | 最终归属 |
 | --- | --- |
 | 消息气泡、typing、错误态、滚动到底部 | 前端 |
-| 消息正文、角色开场白、历史、发送幂等 | 现有 Fibre + 共享 Human-AI Runtime |
-| 模型档位、价格、切换结果 | 现有 `fibre_model_profiles` 与会话 API |
-| Role Card | Fibre 用户 persona 与会话选择；发送前由 Fibre 编译到 Runtime 上下文 |
-| Pinned | Fibre 私有会话置顶事实；发送前由 Fibre 编译到 Runtime 上下文 |
+| 消息正文、角色开场白、历史、发送幂等 | 现有 Plum + 共享 Human-AI Runtime |
+| 模型档位、价格、切换结果 | 现有 `plum_model_profiles` 与会话 API |
+| Role Card | Plum 用户 persona 与会话选择；发送前由 Plum 编译到 Runtime 上下文 |
+| Pinned | Plum 私有会话置顶事实；发送前由 Plum 编译到 Runtime 上下文 |
 | Inspiration | 当前通用前端模板；若以后做角色定制/运营配置，再由后端返回 |
-| 图片、视频、图库 | 首版禁用；以后复用对象存储、任务和审核等通用技术能力，业务记录仍属 Fibre |
+| 图片、视频、图库 | 首版禁用；以后复用对象存储、任务和审核等通用技术能力，业务记录仍属 Plum |
 
 ## 3. 前端改造基线
 
@@ -159,11 +159,11 @@ type CharacterExperience = {
 - stats：`connector_count=12400`、`comment_count=2154`、`memory_count=18`、`like_count=119`、`favorite_count=120`；`interaction_count` 使用上表逐角色数值。
 - Hot Comments：两条当前英文测试评论，点赞数分别为 91 和 63。
 - Public Memory：三条当前测试 Memory，engagement 分别为 61、12 和 5。
-- viewer state：测试账号初始 `Lv0`、`XP0`、Chapter 1、未点赞、未收藏。
-- Role Card：为固定测试账号 seed 一张默认 Persona；Pinned 初始为空。
+- viewer state：每个测试账号初始 `Lv0`、`XP0`、Chapter 1、未点赞、未收藏。
+- Role Card：为每个测试账号 seed 一张默认 Persona；Pinned 初始为空。
 - Inspiration：首版可由 experience API 返回当前三条模板，也可继续作为前端 fallback；不进入 turn，除非用户确认发送。
 
-Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `platform_users`。建议新增 Fibre 公共资料投影，允许测试/运营资料不绑定平台登录身份；真实用户资料则通过可空且唯一的 `platform_user_id` 关联。
+Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `platform_users`。建议新增 Plum 公共资料投影，允许测试/运营资料不绑定平台登录身份；真实用户资料则通过可空且唯一的 `platform_user_id` 关联。
 
 ### 4.4 Prompt 与 Greeting
 
@@ -175,7 +175,7 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 2. `reference_fixture_v1` 幂等 seed：十角色、公开资料、徽章、统计、评论、Memory、默认测试 Persona。
 3. Repository：Feed 投影和 CharacterExperience 聚合，API handler 不直接拼 fixture。
 4. API：Feed 返回十条测试角色；会话详情返回或附带 `experience`；点赞收藏提供幂等写接口。
-5. Human-AI 主链：继续调用现有 `run_product_turn()`；仅在 Fibre 应用层读取 Persona/Pinned 并编译中性上下文。
+5. Human-AI 主链：继续调用现有 `run_product_turn()`；仅在 Plum 应用层读取 Persona/Pinned 并编译中性上下文。
 6. 测试：SQLite/PostgreSQL 双后端 seed 幂等、DTO snapshot、owner 隔离、like/favorite 并发、turn 回归。
 7. 前端联调：删除 `presentation` query 覆盖与业务 mock，保留短期失败 fallback；验证桌面和移动端字段一致。
 
@@ -187,22 +187,22 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 
 | 现有表/模块 | 继续负责 |
 | --- | --- |
-| `fibre_characters` | 角色基础公开字段、封面引用、私有 Prompt、Feed 基础顺序 |
-| `fibre_character_bindings` | 用户×角色到 runtime account 的绑定及 Prompt 版本 |
-| `fibre_conversations` | Fibre 会话、模型档位、runtime session 映射和重开状态 |
-| `fibre_model_profiles` | 产品档位到 provider、费用、启停和配置版本 |
+| `plum_characters` | 角色基础公开字段、封面引用、私有 Prompt、Feed 基础顺序 |
+| `plum_character_bindings` | 用户×角色到 runtime account 的绑定及 Prompt 版本 |
+| `plum_conversations` | Plum 会话、模型档位、runtime session 映射和重开状态 |
+| `plum_model_profiles` | 产品档位到 provider、费用、启停和配置版本 |
 | `runtime_ownerships` | runtime account 的中性 owner 投影 |
 | 共享 `sessions/messages` | 对话正文和历史 |
 | Platform 用户/membership/wallet/ledger/reservation | 身份、1000 初始金币、并发安全扣费 |
-| `run_product_turn()`、`FibreTurnServices` | Human-AI turn、Prompt、审核、模型调用和消息落库 |
+| `run_product_turn()`、`PlumTurnServices` | Human-AI turn、Prompt、审核、模型调用和消息落库 |
 
-`heat_count` 可在过渡期继续返回，但正式统计应由 `fibre_character_stats.interaction_count` 统一提供，避免两个可写计数源长期并存。
+`heat_count` 可在过渡期继续返回，但正式统计应由 `plum_character_stats.interaction_count` 统一提供，避免两个可写计数源长期并存。
 
 ## 6. 建议新增/调整的数据模型
 
 ### 6.1 P0：只读 Feed/Profile 与 viewer state
 
-#### `fibre_public_profiles`
+#### `plum_public_profiles`
 
 用于 Creator、评论作者和公开 Memory owner 的产品公开资料，不等同于登录账号。
 
@@ -211,15 +211,15 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 - 测试/运营资料允许 `platform_user_id=NULL`；真实用户资料关联 Platform 用户。
 - API 只返回公开字段，不暴露手机号、membership 或内部身份数据。
 
-#### 调整 `fibre_characters`
+#### 调整 `plum_characters`
 
-- 新增 `creator_profile_id`，FK 到 `fibre_public_profiles.id`；不要为参考 Creator 创建可登录账号。
+- 新增 `creator_profile_id`，FK 到 `plum_public_profiles.id`；不要为参考 Creator 创建可登录账号。
 - 新增 `content_rating TEXT NOT NULL DEFAULT 'general'`。
 - 保留 `avatar_ref/cover_ref`；其值为对象存储 key 或 CDN URL，不是二进制。
 - 联调 Feed 每张参考卡一条角色记录；用现有 `status/sort_order` 上下架及排序，正式数据沿用同一契约。
 - `tags_json` P0 可继续使用，待需要筛选/运营后台时再规范化。
 
-#### `fibre_character_badges`
+#### `plum_character_badges`
 
 | 字段 | 约束/说明 |
 | --- | --- |
@@ -229,15 +229,15 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 | `status` | active/inactive |
 | `created_at`、`updated_at` | 审计 |
 
-#### `fibre_character_badge_assignments`
+#### `plum_character_badge_assignments`
 
 - `character_id` FK、`badge_id` FK、`sort_order`、`starts_at`、`ends_at`。
 - PK `(character_id, badge_id)`。
 - 索引 `(character_id, sort_order)`。
 
-若 Feed 需要按标签筛选，再增加 `fibre_character_tags` 和 `fibre_character_tag_assignments`；否则 P0 不为展示标签提前拆表。
+若 Feed 需要按标签筛选，再增加 `plum_character_tags` 和 `plum_character_tag_assignments`；否则 P0 不为展示标签提前拆表。
 
-#### `fibre_user_character_relationships`
+#### `plum_user_character_relationships`
 
 一个表同时表达 Connector 和关系成长，避免再建重复的 connection 事实表。
 
@@ -252,7 +252,7 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 
 索引 `(character_id, state, last_interacted_at)`，供 Connector 聚合与运营查询。
 
-#### `fibre_character_stats`
+#### `plum_character_stats`
 
 - `character_id` PK/FK。
 - `interaction_count`、`connector_count`、`comment_count`、`memory_count`、`like_count`、`favorite_count`，全部 `NOT NULL DEFAULT 0 CHECK >= 0`。
@@ -260,7 +260,7 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 
 该表是可重算聚合快照，不是唯一事实源。聊天成功不能等待全表统计重算。
 
-#### `fibre_character_likes` / `fibre_character_favorites`
+#### `plum_character_likes` / `plum_character_favorites`
 
 两表结构相同：
 
@@ -272,16 +272,16 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 
 ### 6.2 P1：Role Card、Pinned 与章节
 
-#### `fibre_user_personas`
+#### `plum_user_personas`
 
 - `id` PK、`platform_user_id` FK。
 - `display_name`、`avatar_ref`、`description`、`prompt_text`。
 - `status`、`is_default`、`version`、`created_at`、`updated_at`。
 - 每个用户最多一个 active default：局部唯一索引 `(platform_user_id, is_default)` where active/default。
 
-公开 DTO 不返回未经处理的 `prompt_text`；它只在 Fibre 应用层编译上下文时使用。
+公开 DTO 不返回未经处理的 `prompt_text`；它只在 Plum 应用层编译上下文时使用。
 
-#### `fibre_conversation_personas`
+#### `plum_conversation_personas`
 
 - `conversation_id` PK/FK。
 - `persona_id` FK、`persona_version`。
@@ -290,7 +290,7 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 
 保存快照，避免用户修改复用 Role Card 后静默改变进行中的故事身份。
 
-#### `fibre_conversation_pins`
+#### `plum_conversation_pins`
 
 - `id` PK、`conversation_id` FK。
 - `source_message_id` 或 `source_memory_id` 可空。
@@ -298,34 +298,34 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 - 索引 `(conversation_id, status, sort_order)`。
 - P0/P1 建议限制每个会话 pin 数量和总字符数，避免 Prompt 无界增长。
 
-#### `fibre_conversation_chapters`
+#### `plum_conversation_chapters`
 
 - `id` PK、`conversation_id` FK、`chapter_no`。
 - `title`、`summary`、`starts_at_message_id`、`ends_at_message_id`。
 - `status`、`created_at`、`closed_at`。
 - UNIQUE `(conversation_id, chapter_no)`。
 
-`fibre_conversations` 增加 `current_chapter_no NOT NULL DEFAULT 1`。章节摘要属于 Fibre 故事产品能力；Runtime 只接收编译后的上下文。
+`plum_conversations` 增加 `current_chapter_no NOT NULL DEFAULT 1`。章节摘要属于 Plum 故事产品能力；Runtime 只接收编译后的上下文。
 
 ### 6.3 P2：评论与公开 Memory
 
-#### `fibre_character_comments`
+#### `plum_character_comments`
 
-- `id` PK、`character_id` FK、`author_profile_id` FK 到 `fibre_public_profiles`。
+- `id` PK、`character_id` FK、`author_profile_id` FK 到 `plum_public_profiles`。
 - `content`、`source_locale`。
 - `status`：pending/visible/hidden/deleted。
 - `like_count`、`is_featured`、`featured_rank`。
 - `created_at`、`updated_at`、`deleted_at`。
 - 索引 `(character_id, status, is_featured, featured_rank, created_at)`。
 
-#### `fibre_character_comment_likes`
+#### `plum_character_comment_likes`
 
 - PK `(comment_id, platform_user_id)`，另有 `created_at`。
 - 评论点赞接口幂等；`like_count` 可重算。
 
-#### `fibre_character_memories`
+#### `plum_character_memories`
 
-- `id` PK、`character_id` FK、`owner_profile_id` FK、`fibre_conversation_id` 可空。
+- `id` PK、`character_id` FK、`owner_profile_id` FK、`plum_conversation_id` 可空。
 - 新增 `origin`：seed/user_published；user_published 时 conversation 必填，seed 测试数据允许为空。
 - `title`、`summary`、`cover_ref`、`message_count`、`engagement_count`。
 - `visibility`：private/unlisted/public。
@@ -341,7 +341,7 @@ Creator、评论作者和 Memory owner 不应为了展示而伪造可登录的 `
 扩展现有：
 
 ```http
-GET /api/v1/products/fibre/feed?section=for_you&limit=10&cursor=...
+GET /api/v1/products/plum/feed?section=for_you&limit=10&cursor=...
 ```
 
 每项返回原始数据，不返回 `48.2K` 这类格式化字符串：
@@ -351,7 +351,7 @@ GET /api/v1/products/fibre/feed?section=for_you&limit=10&cursor=...
   "id": "char_kai_after_hours",
   "display_name": "Kai · After Hours",
   "tagline": "...",
-  "creator": { "id": "...", "display_name": "fibre", "avatar_ref": null },
+  "creator": { "id": "...", "display_name": "plum", "avatar_ref": null },
   "badges": [{ "code": "featured", "display_name": "Editor's Pick", "style_token": "featured" }],
   "tags": ["OC"],
   "interaction_count": 48200,
@@ -388,21 +388,21 @@ Profile 接口失败不能阻断 turn；聊天页可降级到角色基础资料�
 
 ## 8. 与 Human-AI Runtime 的边界
 
-核心规则不变：Runtime 只处理业务无关的人—AI turn，不维护 Fibre Feed/Profile/评论/关系等表。
+核心规则不变：Runtime 只处理业务无关的人—AI turn，不维护 Plum Feed/Profile/评论/关系等表。
 
 ```text
 用户发送消息
-  → Fibre API 校验 conversation / owner / model / wallet
-  → Fibre Application 读取角色 Prompt + Role Card snapshot + active Pins + chapter summary
+  → Plum API 校验 conversation / owner / model / wallet
+  → Plum Application 读取角色 Prompt + Role Card snapshot + active Pins + chapter summary
   → 编译为有大小上限的 ProductPromptContext
   → 调用共享 run_product_turn()
   → Runtime 完成消息、审核、模型调用和终态落库
-  → Fibre Application 在成功终态后幂等更新 relationship/connection 与统计
+  → Plum Application 在成功终态后幂等更新 relationship/connection 与统计
 ```
 
 建议以 `turn_id` 或 assistant `message_id` 作为关系成长的幂等来源，增加产品私有的处理记录或复用中性 outbox，避免重试导致 XP、turn count 和 interaction count 重复增加。统计更新失败不应把已经成功的 AI 回复改判失败；通过 outbox/补偿任务追平。
 
-Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等产品词；Fibre 只向其提交编译后的受控文本上下文。
+Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等产品词；Plum 只向其提交编译后的受控文本上下文。
 
 ## 9. 实施顺序与验收
 
@@ -410,7 +410,7 @@ Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等
 2. **P0B（已完成）：`reference_fixture_v1` seed**。迁入当前十张参考卡、Profile、评论、Memory 和测试 Persona，验证重复执行无副作用。
 3. **P0C（已完成）：Feed 与会话聚合**。Feed 返回十个独立角色；会话详情附带 `experience`；前端删除 `presentation` 和业务 mock 权威路径。
 4. **P0D（已完成）：viewer state 写入**。关系、章节、like/favorite 真正持久化，完成 optimistic 回滚和刷新恢复测试。
-5. **P1：上下文工具**。Role Card、Pinned、章节接口及 Fibre 应用层编译；验证它们真实影响模型回复且不污染共享 Runtime。
+5. **P1：上下文工具**。Role Card、Pinned、章节接口及 Plum 应用层编译；验证它们真实影响模型回复且不污染共享 Runtime。
 6. **P2：社区数据**。评论、评论点赞、公开 Memory、审核与分页。
 7. **以后**：正式资产迁移到对象存储，以及语音、图片、视频和图库。
 
@@ -420,5 +420,5 @@ Runtime 不认识 Role Card、Pinned、Chapter、Connector、Like、Favorite 等
 - 前端不再从本地业务 mock 或 query 参数读取业务权威数据。
 - 接口返回整数计数，前端统一格式化。
 - like/favorite 刷新后不丢失，并发请求不产生负计数或重复关系。
-- P1 完成后，Role Card/Pinned 真实进入角色上下文，但 Runtime/Platform 没有 Fibre 业务表或 `app_id == fibre` 分支。
+- P1 完成后，Role Card/Pinned 真实进入角色上下文，但 Runtime/Platform 没有 Plum 业务表或 `app_id == plum` 分支。
 - Profile、评论和统计故障不影响已有文本 turn；钱包、模型切换和消息历史继续使用现有真实链路。

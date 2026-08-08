@@ -4,7 +4,7 @@ import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand, CoinBadge } from "@/components/brand";
-import { createConversation, getConversation, restartConversation, sendTurn, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { ApiError, createConversation, getConversation, restartConversation, sendTurn, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
 import type { CharacterExperience, ChatMessage, Conversation, ModelProfile } from "@/lib/types";
 
@@ -138,7 +138,11 @@ export default function ChatPage() {
       setExperience(detail.experience);
       setLiked(null);
       setFavorited(null);
-    } catch {
+    } catch (loadError) {
+      if (loadError instanceof ApiError && loadError.status === 401) {
+        router.replace("/?login=1");
+        return;
+      }
       setError("聊天暂时加载失败，请返回后重试。");
     } finally {
       setLoading(false);
@@ -154,6 +158,14 @@ export default function ChatPage() {
     setShowScrollLatest(false);
   }, [messages, sending]);
 
+  function redirectIfUnauthorized(requestError: unknown) {
+    if (requestError instanceof ApiError && requestError.status === 401) {
+      router.replace("/?login=1");
+      return true;
+    }
+    return false;
+  }
+
   function focusVisibleComposer() {
     const visibleTextarea = [mobileTextareaRef.current, desktopTextareaRef.current]
       .find((element) => element && element.getClientRects().length > 0);
@@ -168,8 +180,9 @@ export default function ChatPage() {
     try {
       const result = await updateModel(conversation.id, profile);
       setConversation(result.conversation);
-    } catch {
+    } catch (modelError) {
       setConversation(previous);
+      if (redirectIfUnauthorized(modelError)) return;
       setError("模型切换失败，请重试。");
     } finally {
       setSwitchingModel(false);
@@ -198,6 +211,7 @@ export default function ChatPage() {
       setBalance(result.wallet.balance);
     } catch (sendError) {
       setMessages((current) => current.map((item) => item.id === requestId ? { ...item, pending: false, failed: true } : item));
+      if (redirectIfUnauthorized(sendError)) return;
       setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息没能发出去，请再试一次。");
       setText(content);
     } finally {
@@ -217,7 +231,8 @@ export default function ChatPage() {
       setExperience(result.experience);
       setShowRestart(false);
       router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}`);
-    } catch {
+    } catch (restartError) {
+      if (redirectIfUnauthorized(restartError)) return;
       setError("重新开始失败，请稍后再试。");
     } finally {
       setSending(false);
@@ -280,8 +295,9 @@ export default function ChatPage() {
         },
       } : current);
       setLiked(null);
-    } catch {
+    } catch (likeError) {
       setLiked(null);
+      if (redirectIfUnauthorized(likeError)) return;
       setError("点赞状态保存失败，请重试。");
     } finally {
       setReactionBusy(false);
@@ -304,8 +320,9 @@ export default function ChatPage() {
         },
       } : current);
       setFavorited(null);
-    } catch {
+    } catch (favoriteError) {
       setFavorited(null);
+      if (redirectIfUnauthorized(favoriteError)) return;
       setError("收藏状态保存失败，请重试。");
     } finally {
       setReactionBusy(false);
@@ -644,7 +661,7 @@ export default function ChatPage() {
         </section>
       </div>
 
-      <footer className="chat-reference-footer"><span>Supported Cards</span><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 FIBRE</small></footer>
+      <footer className="chat-reference-footer"><span>Supported Cards</span><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM</small></footer>
 
       {showRestart && (
         <div className="modal-backdrop" onClick={() => setShowRestart(false)}>

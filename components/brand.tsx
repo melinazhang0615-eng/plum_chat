@@ -2,13 +2,13 @@ import Link from "next/link";
 
 export function Brand() {
   return (
-    <Link href="/" className="brand" aria-label="返回 Fibre 首页">
+    <Link href="/" className="brand" aria-label="返回 Plum 首页">
       <span className="brand-mark" aria-hidden="true">
         <i />
         <i />
         <i />
       </span>
-      <span>fibre</span>
+      <span>plum</span>
     </Link>
   );
 }

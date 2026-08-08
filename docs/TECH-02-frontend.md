@@ -1,4 +1,4 @@
-# Fibre Chat MVP 前端技术方案
+# Plum Chat MVP 前端技术方案
 
 > 文档编号：TECH-02
 > 版本：v0.3
@@ -28,7 +28,7 @@
 | API 封装 | typed `fetch` wrapper | JSON 请求、统一错误处理 |
 | 静态验证 | TypeScript + Next production build | 类型和构建兼容性 |
 | 端到端测试 | Playwright | Feed 到聊天、模型切换、失败重试 |
-| API 契约 | 手写 TypeScript 类型 | 对齐当前固定 Fibre JSON API |
+| API 契约 | 手写 TypeScript 类型 | 对齐当前固定 Plum JSON API |
 
 MVP 不引入 Redux/Zustand/TanStack Query。页面级 state 足以覆盖当前范围；出现跨页面缓存或复杂编辑状态后再升级。
 
@@ -54,7 +54,7 @@ MVP 不引入 Redux/Zustand/TanStack Query。页面级 state 足以覆盖当前�
 ## 4. 建议目录结构
 
 ```text
-fibre_chat/
+plum_chat/
 ├── app/
 │   ├── layout.tsx
 │   ├── page.tsx
@@ -145,17 +145,19 @@ type SessionSnapshot = {
 
 前端根布局加载后执行一次：
 
-1. 调用 `GET /api/v1/products/fibre/bootstrap`。
-2. 服务端仅在 `local/test + FIBRE_DEV_MODE` 下解析预置测试账号，不接受客户端 user ID。
+1. 调用 `GET /api/v1/products/plum/bootstrap`。
+2. 已登录时服务端从 HttpOnly Cookie 解析 Plum principal；未登录返回 `401`，前端展示邀请码弹层。
 3. 返回 `coin_balance` 和已启用模型档位。
 4. 将结果写入 `['bootstrap']` Query Cache。
 5. 请求期间余额位置显示骨架，不把 1000 写死在前端。
 
 如果会话初始化失败：
 
-- Feed 公开卡片仍可展示。
-- 点击聊天或发送前必须重试初始化。
+- `401` 进入邀请码兑换流程，成功后重新加载 bootstrap 与 Feed。
+- 其他错误展示可重试错误态。
 - 不在客户端生成或提交临时用户 ID 来绕过服务端。
+
+所有请求使用同源 `/api/v1/products/plum/*`。浏览器自动携带 HttpOnly session；非 GET 请求从 `plum_csrf` Cookie 读取 token，并发送 `X-Plum-CSRF`。聊天页遇到 `401` 返回首页登录态。
 
 ## 8. Feed 页面实现
 
@@ -278,7 +280,7 @@ type ModelOption = {
 ### 11.2 切换流程
 
 1. 打开选择器，展示名称、定位和单次费用。
-2. 选择后调用 `PATCH /api/v1/products/fibre/conversations/:id/model`。
+2. 选择后调用 `PATCH /api/v1/products/plum/conversations/:id/model`。
 3. 成功后更新会话缓存。
 4. 失败则恢复原选择，并显示错误。
 5. 发送 turn 时不再提交可信模型 ID；后端读取 conversation 当前档位并保存 profile、provider 和价格快照。
@@ -307,7 +309,7 @@ type ModelOption = {
 | `MESSAGE_TOO_LONG` | 标记输入超限，不清空草稿 |
 | `GENERATION_TIMEOUT` | 失败消息显示“回复超时，可重试” |
 | `GENERATION_FAILED` | 失败消息显示通用可重试文案 |
-| `DEV_USER_NOT_READY` | 提示先执行后端 Fibre 开发 seed，不在前端创建用户 |
+| `DEV_USER_NOT_READY` | 提示先执行后端 Plum 开发 seed，不在前端创建用户 |
 | `RATE_LIMITED` | 显示稍后重试和可选等待时间 |
 
 ### 13.2 重试语义
@@ -365,7 +367,7 @@ type ModelOption = {
 
 - AI 消息和用户消息按纯文本渲染，默认不执行 Markdown/HTML。
 - 如后续支持 Markdown，必须使用白名单清洗，不允许任意 HTML。
-- 前端不保存登录令牌，也不传递可信 user ID；正式身份接入后再补 Cookie/session 客户端逻辑。
+- 前端不保存 session 明文，也不传递可信 user ID；HttpOnly Cookie 由浏览器管理，前端只读取独立 CSRF Cookie。
 - 不在客户端埋点中发送完整消息正文。
 - 禁止在构建时将服务端模型密钥注入 `NEXT_PUBLIC_*` 环境变量。
 

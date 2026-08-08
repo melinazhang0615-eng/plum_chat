@@ -4,6 +4,11 @@ export type Wallet = {
   unit: string;
 };
 
+export type AuthUser = {
+  id: string;
+  display_name: string;
+};
+
 export type ModelProfile = {
   profile: "fast" | "balanced" | "immersive";
   display_name: string;
@@ -98,7 +103,7 @@ export type CharacterPublicMemory = {
 };
 
 /**
- * Backend contract for the Fibre product-domain data surrounding a character.
+ * Backend contract for the Plum product-domain data surrounding a character.
  * Messages, model execution and wallet data remain shared runtime concerns.
  */
 export type CharacterExperience = {
