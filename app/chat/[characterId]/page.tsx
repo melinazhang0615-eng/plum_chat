@@ -441,14 +441,6 @@ export default function ChatPage() {
                   <div><small>Interactions</small><strong>{formatCompactCount(profile.stats.interaction_count)}</strong></div>
                   <div><small>Connectors</small><strong>{formatCompactCount(profile.stats.connector_count)}</strong></div>
                 </section>
-                <section className="mobile-profile-section">
-                  <header><b>✦ Hot Comments 🔥</b><span>{profile.stats.comment_count.toLocaleString()}</span></header>
-                  {profile.hot_comments.map((comment) => <article key={comment.id}><i>{comment.author.display_name.slice(0, 1).toUpperCase()}</i><div><b>{comment.author.display_name}</b><p>{comment.content}</p></div><span>♡ {comment.like_count}</span></article>)}
-                </section>
-                <section className="mobile-profile-section mobile-memory-section">
-                  <header><b>✦ Memory</b><span>{profile.stats.memory_count}</span></header>
-                  {profile.memories.map((memory) => <article key={memory.id}><i>∞</i><div><b>{memory.title}</b><p>{memory.engagement_count} moments</p></div></article>)}
-                </section>
                 <section className="mobile-profile-copy"><small>Tagline</small><p>“{tagline}”</p></section>
                 <section className="mobile-profile-copy"><small>Greeting</small><p>{character.greeting}</p></section>
               </div>
@@ -510,28 +502,6 @@ export default function ChatPage() {
                 <div className="profile-creator-stat"><small>Creator</small><span><i>{profile.creator.display_name.slice(0, 1).toUpperCase()}</i><b>{profile.creator.display_name}</b></span></div>
                 <div><small>Interactions</small><strong>{formatCompactCount(profile.stats.interaction_count)}</strong></div>
                 <div><small>Connectors</small><strong>{formatCompactCount(profile.stats.connector_count)}</strong></div>
-              </section>
-
-              <section className="profile-glass-card comments-card">
-                <header><b>✦ Hot Comments 🔥</b><button>View All ({profile.stats.comment_count.toLocaleString()}) <span>›</span></button></header>
-                {profile.hot_comments.map((comment, index) => (
-                  <article className="profile-comment" key={comment.id}>
-                    <span className={`comment-avatar ${index % 2 === 0 ? "coral" : "violet"}`}>{comment.author.display_name.slice(0, 1).toUpperCase()}</span>
-                    <div><p><b>{comment.author.display_name}</b><time>{formatShortDate(comment.created_at)}</time></p><strong>{comment.content}</strong><button>View Translation</button></div>
-                    <span className="comment-like">♡<small>{comment.like_count}</small></span>
-                  </article>
-                ))}
-              </section>
-
-              <section className="profile-glass-card memories-card">
-                <header><b>✦ Memory</b><button>View All ({profile.stats.memory_count}) <span>›</span></button></header>
-                {profile.memories.map((memory, index) => (
-                  <article className="memory-row" key={memory.id}>
-                    <span className="memory-avatars"><i>{index + 1}</i><i><Image src={cover} alt="" fill sizes="26px" /></i><b>∞</b></span>
-                    <strong>{memory.title}</strong>
-                    <span className="memory-count">▢<small>{memory.engagement_count}</small></span>
-                  </article>
-                ))}
               </section>
 
               <p className="profile-bottom-tagline">“{tagline}”</p>
