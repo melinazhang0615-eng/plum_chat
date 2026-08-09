@@ -64,6 +64,7 @@ export type Conversation = {
   character_id: string;
   model_profile: ModelProfile["profile"];
   runtime_session_id: number;
+  updated_at?: string;
   character: Character;
 };
 

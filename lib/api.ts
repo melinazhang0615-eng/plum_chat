@@ -61,6 +61,12 @@ export function createConversation(characterId: string) {
   });
 }
 
+export function getConversationHistory(limit = 30) {
+  return request<{ status: string; items: Conversation[] }>(
+    `/conversations?limit=${limit}`,
+  );
+}
+
 export function getConversation(conversationId: string) {
   return request<{
     status: string;
