@@ -1,6 +1,7 @@
 # Plum Chat 同事本地运行交接说明
 
-> 目标：在一台新的开发机 checkout 前后端，并跑通邀请码登录、Feed、模型切换和真实聊天。
+> 目标：在一台新的开发机 checkout 前后端，使用隔离 SQLite 和固定测试账号跑通 Feed、
+> 模型切换、SSE 流式聊天；需要时再单独验证邀请码登录。
 
 ## 1. 环境要求与代码版本
 
@@ -14,7 +15,8 @@
 - 前端：`git@github.com:huanshanxiaoyao/plum_chat.git`
 - 后端：`git@github.com:huanshanxiaoyao/ai4all_bridge.git`
 
-后端 PR #79 已合并，使用 `main`。前端改动目前在 `codex/plum-public-test-auth`；合并前请 checkout 该分支，合并后改用 `main`。
+前后端均使用已合并并通过 CI 的 `main`；开始联调前记录 `git rev-parse HEAD`，便于排查
+同事之间的版本差异。
 
 ## 2. Checkout 和安装
 
@@ -32,11 +34,9 @@ python3.11 -m venv .venv
 cp .env.example .env
 
 cd ~/workspace/ai4all/plum_chat
-git switch codex/plum-public-test-auth
+git switch main
 npm ci
 ```
-
-如果前端分支已经合并，则最后一段改为 `git switch main`。
 
 ## 3. 配置本地后端
 
@@ -44,11 +44,8 @@ npm ci
 
 ```dotenv
 APP_ENV=local
-DATABASE_URL=
 PLUM_ENABLED=true
-PLUM_DEV_MODE=false
-PLUM_PUBLIC_TEST_AUTH_ENABLED=true
-PLUM_SESSION_COOKIE_SECURE=false
+PLUM_CHAT_STREAMING_ENABLED=true
 
 AI4ALL_BRIDGE_SECRET=dev-secret
 ADMIN_TOKEN=dev-admin-token
@@ -60,21 +57,20 @@ LLM_ANTHROPIC_API_KEY=<team-provided-key-if-used>
 
 模型密钥应由负责人通过安全渠道提供，不要发在群聊、写进文档或提交到 Git。若只想调 UI，可以暂时把三个模型密钥留空，后端会在 local 环境使用 mock 回复；要验证真实回复和模型选择，必须配置对应密钥。
 
-## 4. 创建本地邀请码并启动后端
+`make plum-local-*` 会在进程级覆盖数据库和 dev 身份配置，因此即使 `.env` 中为其他后端
+业务配置了 `DATABASE_URL`，Plum 本地联调也不会误连该 PostgreSQL。
 
-使用单独的 SQLite 文件，避免影响后端仓库其他本地业务数据：
+## 4. 初始化并启动本地后端
+
+使用统一 Make 命令创建独立 SQLite、固定测试账号、演示角色和 1000 初始金币：
 
 ```bash
 cd ~/workspace/ai4all/weixin_bot
-
-DATABASE_URL= DATABASE_PATH=data/plum_public_test.sqlite3 \
-  .venv/bin/python scripts/create_plum_access_invite.py --label "local-tester"
-
-PLUM_DEV_MODE=false DATABASE_URL= DATABASE_PATH=data/plum_public_test.sqlite3 \
-  .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8180 --reload
+make plum-local-init
+make plum-local-run
 ```
 
-保存脚本输出中的 `access_code`。后端终端保持运行，另开终端验证：
+后端终端保持运行，另开终端验证：
 
 ```bash
 curl http://127.0.0.1:8180/health
@@ -90,7 +86,24 @@ cd ~/workspace/ai4all/plum_chat
 npm run dev
 ```
 
-打开 `http://127.0.0.1:3000`，输入刚生成的邀请码和测试称呼。开发环境默认把 `/api/v1/products/plum/*` rewrite 到 `http://127.0.0.1:8180`，通常不需要额外前端环境变量。
+打开 `http://127.0.0.1:3000`。固定测试账号会直接登录；开发环境默认把
+`/api/v1/products/plum/*` rewrite 到 `http://127.0.0.1:8180`，通常不需要额外前端环境变量。
+
+### 可选：验证邀请码路线 B
+
+邀请码模式使用另一份 SQLite，不与固定测试账号环境混用：
+
+```bash
+cd ~/workspace/ai4all/weixin_bot
+DATABASE_URL= DATABASE_PATH=data/plum_public_test.sqlite3 \
+  .venv/bin/python scripts/create_plum_access_invite.py --label "local-tester"
+
+PLUM_DEV_MODE=false PLUM_CHAT_STREAMING_ENABLED=true \
+  DATABASE_URL= DATABASE_PATH=data/plum_public_test.sqlite3 \
+  .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8180 --reload
+```
+
+保存脚本输出中只出现一次的 `access_code`，再到前端登录弹层兑换。
 
 ## 6. 本地验收
 
@@ -99,6 +112,7 @@ npm run dev
 - [ ] 可以创建并恢复对话。
 - [ ] 三档模型可以切换，刷新后保持选择。
 - [ ] 配置真实模型密钥时可获得真实回复，并按 1/3/5 金币扣费。
+- [ ] 长回复在完成前出现多次增量，Stop 后停止继续追加。
 - [ ] 点赞、收藏和 Persona 修改能保存。
 - [ ] 注销后回到邀请码登录状态。
 
@@ -108,5 +122,10 @@ npm run dev
 - 一直是 mock 回复：检查 `.env` 中对应 provider 的 API key、base URL 和 model 配置，然后重启后端。
 - 登录成功但写请求 403：不要直接跨域调用后端；浏览器应访问 `127.0.0.1:3000`，由 Next.js 同源转发 Cookie 和 CSRF。
 - 邀请码无效：确认创建邀请码和启动后端使用的是同一个 `DATABASE_PATH`。
+- 启动提示 migration/reconcile blocked：不要清理已有数据库；固定账号模式换一个隔离文件，
+  例如先执行 `export PLUM_DEV_DB=data/plum_dev_alice.sqlite3`，再依次运行
+  `make plum-local-init`、`make plum-local-run`。
+- `chat_streaming=false`：确认使用 `make plum-local-run`，或检查进程环境中的
+  `PLUM_CHAT_STREAMING_ENABLED=true`。
 - 端口被占用：找出占用 `3000` 或 `8180` 的旧进程，或统一修改前端 rewrite 与后端端口。
 - Python 依赖或语法异常：确认虚拟环境由 Python 3.11+ 创建，并重新安装 `requirements.txt`。
