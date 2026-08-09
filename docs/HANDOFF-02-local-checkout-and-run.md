@@ -66,9 +66,11 @@ LLM_ANTHROPIC_API_KEY=<team-provided-key-if-used>
 
 ```bash
 cd ~/workspace/ai4all/weixin_bot
-make plum-local-init
-make plum-local-run
+make plum-local-start
 ```
+
+该命令会先幂等补齐本地测试数据，再启动后端；不会重置已消费的金币或已有聊天记录。
+需要拆分排障时，仍可分别执行 `make plum-local-init` 和 `make plum-local-run`。
 
 后端终端保持运行，另开终端验证：
 
@@ -123,9 +125,8 @@ PLUM_DEV_MODE=false PLUM_CHAT_STREAMING_ENABLED=true \
 - 登录成功但写请求 403：不要直接跨域调用后端；浏览器应访问 `127.0.0.1:3000`，由 Next.js 同源转发 Cookie 和 CSRF。
 - 邀请码无效：确认创建邀请码和启动后端使用的是同一个 `DATABASE_PATH`。
 - 启动提示 migration/reconcile blocked：不要清理已有数据库；固定账号模式换一个隔离文件，
-  例如先执行 `export PLUM_DEV_DB=data/plum_dev_alice.sqlite3`，再依次运行
-  `make plum-local-init`、`make plum-local-run`。
-- `chat_streaming=false`：确认使用 `make plum-local-run`，或检查进程环境中的
-  `PLUM_CHAT_STREAMING_ENABLED=true`。
+  例如执行 `PLUM_DEV_DB=data/plum_dev_alice.sqlite3 make plum-local-start`。
+- `chat_streaming=false`：检查 `.env` 或进程环境是否显式设置了
+  `PLUM_CHAT_STREAMING_ENABLED=false`，并确认 bootstrap capability 返回值。
 - 端口被占用：找出占用 `3000` 或 `8180` 的旧进程，或统一修改前端 rewrite 与后端端口。
 - Python 依赖或语法异常：确认虚拟环境由 Python 3.11+ 创建，并重新安装 `requirements.txt`。

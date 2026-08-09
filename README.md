@@ -21,12 +21,11 @@
 
 ```bash
 cd /path/to/weixin_bot
-make plum-local-init
-make plum-local-run
+make plum-local-start
 ```
 
-`plum-local-init` 会创建固定测试账号、演示角色和 1000 初始金币；`plum-local-run`
-会监听 `127.0.0.1:8180` 并默认开启 SSE 流式聊天。数据库默认保存在
+`plum-local-start` 会幂等创建固定测试账号、演示角色和 1000 初始金币，再监听
+`127.0.0.1:8180` 启动 SSE 流式聊天。数据库默认保存在
 `data/plum_dev.sqlite3`，可用 `PLUM_DEV_DB=data/plum_dev_alice.sqlite3` 覆盖，适合多人或
 多分支隔离。
 
@@ -40,7 +39,7 @@ LLM_OPENAI_API_KEY=...   # 均衡：OpenAI Responses
 只有在需要离线调试 UI 时，才显式清空密钥进入本地 mock 模式：
 
 ```bash
-LLM_API_KEY= LLM_OPENAI_API_KEY= LLM_ANTHROPIC_API_KEY= make plum-local-run
+LLM_API_KEY= LLM_OPENAI_API_KEY= LLM_ANTHROPIC_API_KEY= make plum-local-start
 ```
 
 前端：
