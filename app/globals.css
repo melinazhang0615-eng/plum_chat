@@ -115,7 +115,8 @@ svg { display: block; }
 .cid-pill { color: rgba(255,255,255,.78); }
 .cid-pill span { margin-left: 3px; }
 .hide-profile span { margin-left: 5px; font-size: 18px; line-height: 0; }
-.profile-hover-content { position: absolute; z-index: -1; inset: 78px 14px 0; padding: 12px 0 17px; overflow-y: auto; opacity: 0; transform: translateY(8px); scrollbar-width: none; pointer-events: none; transition: opacity .26s ease, transform .28s ease; }
+.profile-hover-content { position: absolute; z-index: -1; inset: 78px 14px 0; padding: 12px 0 17px; overflow-y: auto; display: flex; flex-direction: column; opacity: 0; transform: translateY(8px); scrollbar-width: none; pointer-events: none; transition: opacity .26s ease, transform .28s ease; }
+.profile-hover-content > :first-child { margin-top: auto; }
 .profile-hover-content::-webkit-scrollbar { display: none; }
 .role-profile:hover .profile-hover-content, .role-profile:focus-within .profile-hover-content { z-index: 1; opacity: 1; transform: translateY(0); pointer-events: auto; }
 .role-profile:hover .profile-image-shade, .role-profile:focus-within .profile-image-shade { opacity: 1; }
