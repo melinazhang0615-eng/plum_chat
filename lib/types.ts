@@ -68,13 +68,23 @@ export type Conversation = {
   character: Character;
 };
 
+export type MessageStatus =
+  | "sending"
+  | "streaming"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
 export type ChatMessage = {
   id: number | string;
   message_id?: string | null;
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  status?: MessageStatus;
+  /** @deprecated Kept while older API payloads and cached UI state are migrated. */
   pending?: boolean;
+  /** @deprecated Kept while older API payloads and cached UI state are migrated. */
   failed?: boolean;
 };
 
