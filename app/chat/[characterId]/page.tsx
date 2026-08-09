@@ -5,9 +5,9 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand } from "@/components/brand";
-import { ApiError, createConversation, getBootstrap, getConversation, getConversationHistory, logout, restartConversation, sendTurn, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { ApiError, cancelTurn, createConversation, getBootstrap, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
-import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ModelProfile } from "@/lib/types";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, MessageStatus, ModelProfile } from "@/lib/types";
 
 function formatTime(value?: string) {
   if (!value) return "刚刚";
@@ -24,6 +24,9 @@ function CommunityIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><c
 function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
+}
+function StopIcon() {
+  return <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="10" y="10" width="10" height="10" rx="1.5" /></svg>;
 }
 function MoreIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 10.83a.83.83 0 1 0 0-1.66.83.83 0 0 0 0 1.66ZM10 5a.83.83 0 1 0 0-1.67A.83.83 0 0 0 10 5Zm0 11.67A.83.83 0 1 0 10 15a.83.83 0 0 0 0 1.67Z" /></svg>;
@@ -88,9 +91,26 @@ function ChatLoading() {
   return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>正在走进角色的世界…</p></main>;
 }
 
+function getMessageStatus(message: ChatMessage): MessageStatus {
+  if (message.status) return message.status;
+  if (message.failed) return "failed";
+  if (message.pending) return "sending";
+  return "completed";
+}
+
+function messageStatusText(message: ChatMessage) {
+  const status = getMessageStatus(message);
+  if (status === "sending") return "发送中…";
+  if (status === "streaming") return "正在回复…";
+  if (status === "cancelled") return "已停止";
+  if (status === "failed") return message.role === "user" ? "发送失败" : "生成失败";
+  return formatTime(message.created_at);
+}
+
 export default function ChatPage() {
   const params = useParams<{ characterId: string }>();
   const search = useSearchParams();
+  const requestedConversationId = search.get("conversation");
   const router = useRouter();
   const desktopMessageStageRef = useRef<HTMLElement>(null);
   const mobileMessageStageRef = useRef<HTMLElement>(null);
@@ -98,6 +118,12 @@ export default function ChatPage() {
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const historyRailRef = useRef<HTMLElement>(null);
   const roleProfileRef = useRef<HTMLElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const streamBufferRef = useRef("");
+  const activeTurnRef = useRef<{ requestId: string; assistantId: string; cancelled: boolean } | null>(null);
+  const reconciliationTimersRef = useRef<number[]>([]);
+  const nearBottomRef = useRef({ desktop: true, mobile: true });
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [experience, setExperience] = useState<CharacterExperience | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -110,7 +136,9 @@ export default function ChatPage() {
   const [walletOpen, setWalletOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  const [generationState, setGenerationState] = useState<"idle" | "submitting" | "streaming" | "cancelling">("idle");
+  const [restarting, setRestarting] = useState(false);
+  const [chatStreamingEnabled, setChatStreamingEnabled] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,11 +157,15 @@ export default function ChatPage() {
     () => models.find((item) => item.profile === conversation?.model_profile),
     [models, conversation?.model_profile],
   );
+  const generating = generationState !== "idle";
+  const canStopGeneration = generating && chatStreamingEnabled;
+  const sending = generating || restarting;
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      let conversationId = search.get("conversation");
+      let conversationId = requestedConversationId;
       if (!conversationId) {
         const created = await createConversation(params.characterId);
         conversationId = created.conversation.id;
@@ -151,6 +183,7 @@ export default function ChatPage() {
       setUser(bootstrap.user);
       setHistory(conversationHistory.items);
       setExperience(detail.experience);
+      setChatStreamingEnabled(bootstrap?.capabilities?.chat_streaming === true);
       setLiked(null);
       setFavorited(null);
     } catch (loadError) {
@@ -164,14 +197,17 @@ export default function ChatPage() {
     }
   }
 
-  useEffect(() => { void load(); }, [params.characterId]);
+  useEffect(() => { void load(); }, [params.characterId, requestedConversationId]);
   useEffect(() => {
-    [desktopMessageStageRef.current, mobileMessageStageRef.current].forEach((stage) => {
-      if (!stage) return;
-      stage.scrollTo({ top: stage.scrollHeight, behavior: "smooth" });
+    const stages = [
+      ["desktop", desktopMessageStageRef.current],
+      ["mobile", mobileMessageStageRef.current],
+    ] as const;
+    stages.forEach(([kind, stage]) => {
+      if (!stage || !stage.getClientRects().length || !nearBottomRef.current[kind]) return;
+      stage.scrollTo({ top: stage.scrollHeight, behavior: generationState === "streaming" ? "auto" : "smooth" });
     });
-    setShowScrollLatest(false);
-  }, [messages, sending]);
+  }, [messages, generationState]);
   useEffect(() => {
     function collapseHistoryIfItOverlapsProfile() {
       if (!historyOpen || !historyRailRef.current || !roleProfileRef.current) return;
@@ -182,6 +218,11 @@ export default function ChatPage() {
     window.addEventListener("resize", collapseHistoryIfItOverlapsProfile);
     return () => window.removeEventListener("resize", collapseHistoryIfItOverlapsProfile);
   }, [historyOpen]);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
+    reconciliationTimersRef.current.forEach((timer) => clearTimeout(timer));
+  }, []);
 
   function redirectIfUnauthorized(requestError: unknown) {
     if (requestError instanceof ApiError && requestError.status === 401) {
@@ -195,6 +236,72 @@ export default function ChatPage() {
     const visibleTextarea = [mobileTextareaRef.current, desktopTextareaRef.current]
       .find((element) => element && element.getClientRects().length > 0);
     visibleTextarea?.focus();
+  }
+
+  function flushAssistantBuffer(assistantId: string) {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    const delta = streamBufferRef.current;
+    streamBufferRef.current = "";
+    if (!delta) return;
+    setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content + delta } : item));
+  }
+
+  function appendAssistantDelta(assistantId: string, delta: string) {
+    if (!delta || activeTurnRef.current?.cancelled) return;
+    streamBufferRef.current += delta;
+    if (animationFrameRef.current !== null) return;
+    animationFrameRef.current = requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      const buffered = streamBufferRef.current;
+      streamBufferRef.current = "";
+      if (!buffered || activeTurnRef.current?.cancelled) return;
+      setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content + buffered, status: "streaming" } : item));
+    });
+  }
+
+  function stopGeneration() {
+    const activeTurn = activeTurnRef.current;
+    if (!activeTurn || generationState === "cancelling") return;
+    activeTurn.cancelled = true;
+    flushAssistantBuffer(activeTurn.assistantId);
+    setGenerationState("cancelling");
+    setMessages((current) => current.map((item) => {
+      if (item.id === activeTurn.assistantId) return { ...item, status: "cancelled" };
+      if (item.id === activeTurn.requestId && getMessageStatus(item) === "sending") return { ...item, status: "completed" };
+      return item;
+    }));
+    const controller = abortRef.current;
+    const conversationId = conversation?.id;
+    let finalized = false;
+    const finalizeStop = () => {
+      if (finalized) return;
+      finalized = true;
+      controller?.abort();
+      if (!conversationId) return;
+      [700, 1800].forEach((delay) => {
+        const timer = window.setTimeout(() => {
+          void getConversation(conversationId)
+            .then((detail) => setBalance(detail.wallet.balance))
+            .catch(() => undefined);
+        }, delay);
+        reconciliationTimersRef.current.push(timer);
+      });
+    };
+    const fallbackTimer = window.setTimeout(finalizeStop, 500);
+    if (!conversationId) {
+      finalizeStop();
+      return;
+    }
+    void cancelTurn(conversationId, activeTurn.requestId)
+      .then((result) => setBalance(result.wallet.balance))
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(fallbackTimer);
+        finalizeStop();
+      });
   }
 
   async function selectModel(profile: ModelProfile["profile"]) {
@@ -223,31 +330,100 @@ export default function ChatPage() {
       return;
     }
     const requestId = crypto.randomUUID();
+    const assistantId = `local-assistant:${requestId}`;
+    const controller = new AbortController();
+    let accepted = false;
     setText("");
-    setMessages((current) => [...current, { id: requestId, message_id: requestId, role: "user", content, pending: true }]);
-    setSending(true);
+    setMessages((current) => [
+      ...current,
+      { id: requestId, message_id: requestId, role: "user", content, status: "sending" },
+      { id: assistantId, role: "assistant", content: "", status: "sending" },
+    ]);
+    streamBufferRef.current = "";
+    abortRef.current = controller;
+    activeTurnRef.current = { requestId, assistantId, cancelled: false };
+    setGenerationState("submitting");
     setError(null);
     try {
-      const result = await sendTurn(conversation.id, content, requestId);
-      setMessages((current) => [
-        ...current.map((item) => item.id === requestId ? { ...item, pending: false } : item),
-        { id: result.reply.message_id ?? `reply-${requestId}`, message_id: result.reply.message_id, role: "assistant", content: result.reply.text },
-      ]);
-      setBalance(result.wallet.balance);
+      if (chatStreamingEnabled) {
+        await sendTurnStream({
+          conversationId: conversation.id,
+          text: content,
+          requestId,
+          signal: controller.signal,
+          onEvent: (streamEvent) => {
+            if (activeTurnRef.current?.requestId !== requestId || activeTurnRef.current.cancelled) return;
+            if (streamEvent.type === "turn.accepted") {
+              accepted = true;
+              setGenerationState("streaming");
+              setMessages((current) => current.map((item) => item.id === requestId
+                ? { ...item, status: "completed" }
+                : item.id === assistantId ? { ...item, status: "streaming" } : item));
+            } else if (streamEvent.type === "message.delta") {
+              setGenerationState("streaming");
+              appendAssistantDelta(assistantId, streamEvent.text);
+            } else if (streamEvent.type === "turn.completed") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet.balance);
+              setMessages((current) => current.map((item) => item.id === assistantId ? {
+                ...item,
+                id: streamEvent.message_id ?? item.id,
+                message_id: streamEvent.message_id,
+                status: "completed",
+              } : item));
+            } else if (streamEvent.type === "turn.cancelled") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet.balance);
+              setMessages((current) => current.map((item) => item.id === assistantId ? {
+                ...item,
+                id: streamEvent.message_id ?? item.id,
+                message_id: streamEvent.message_id,
+                status: "cancelled",
+              } : item));
+            } else if (streamEvent.type === "turn.failed") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet.balance);
+              setMessages((current) => current.map((item) => item.id === assistantId
+                ? { ...item, status: "failed" }
+                : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
+              setText((current) => current || content);
+              setError("回复生成失败，请重试。");
+            }
+          },
+        });
+      } else {
+        const result = await sendTurn(conversation.id, content, requestId);
+        setMessages((current) => current.map((item) => item.id === requestId
+          ? { ...item, status: "completed" }
+          : item.id === assistantId ? {
+            ...item,
+            id: result.reply.message_id ?? item.id,
+            message_id: result.reply.message_id,
+            content: result.reply.text,
+            status: "completed",
+          } : item));
+        setBalance(result.wallet.balance);
+      }
     } catch (sendError) {
-      setMessages((current) => current.map((item) => item.id === requestId ? { ...item, pending: false, failed: true } : item));
+      if (controller.signal.aborted) return;
+      flushAssistantBuffer(assistantId);
+      setMessages((current) => current.map((item) => item.id === assistantId
+        ? { ...item, status: "failed" }
+        : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
       if (redirectIfUnauthorized(sendError)) return;
-      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息没能发出去，请再试一次。");
-      setText(content);
+      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息或回复中断，请再试一次。");
+      setText((current) => current || content);
     } finally {
-      setSending(false);
+      if (activeTurnRef.current?.requestId === requestId) activeTurnRef.current = null;
+      if (abortRef.current === controller) abortRef.current = null;
+      setGenerationState("idle");
       focusVisibleComposer();
     }
   }
 
   async function confirmRestart() {
     if (!conversation || sending || switchingModel) return;
-    setSending(true);
+    setRestarting(true);
     try {
       const result = await restartConversation(conversation.id);
       setConversation(result.conversation);
@@ -260,7 +436,7 @@ export default function ChatPage() {
       if (redirectIfUnauthorized(restartError)) return;
       setError("重新开始失败，请稍后再试。");
     } finally {
-      setSending(false);
+      setRestarting(false);
     }
   }
 
@@ -287,6 +463,7 @@ export default function ChatPage() {
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
 
   function scrollToLatest() {
+    nearBottomRef.current = { desktop: true, mobile: true };
     [desktopMessageStageRef.current, mobileMessageStageRef.current].forEach((stage) => {
       if (stage?.getClientRects().length) stage.scrollTo({ top: stage.scrollHeight, behavior: "smooth" });
     });
@@ -382,7 +559,9 @@ export default function ChatPage() {
           ref={mobileMessageStageRef}
           onScroll={(event) => {
             const stage = event.currentTarget;
-            setShowScrollLatest(stage.scrollHeight - stage.scrollTop - stage.clientHeight > 72);
+            const nearBottom = stage.scrollHeight - stage.scrollTop - stage.clientHeight <= 72;
+            nearBottomRef.current.mobile = nearBottom;
+            setShowScrollLatest(!nearBottom);
           }}
         >
           <div className="mobile-message-list">
@@ -391,22 +570,20 @@ export default function ChatPage() {
             <div className="mobile-tagline"><b>Tagline:</b> “{tagline}”</div>
             <div className="mobile-opening">{character.greeting}</div>
 
-            {messages.map((message) => (
-              <div className={`mobile-message-row ${message.role}${message.failed ? " failed" : ""}`} key={`mobile-${message.id}`}>
+            {messages.map((message) => {
+              const status = getMessageStatus(message);
+              const waiting = !message.content && (status === "sending" || status === "streaming");
+              return (
+              <div className={`mobile-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={`mobile-${message.id}`}>
                 {message.role === "assistant" && <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>}
                 <div className="mobile-message-stack">
-                  <div className="mobile-bubble">{message.content}</div>
-                  <small>{message.failed ? "发送失败" : message.pending ? "发送中…" : formatTime(message.created_at)}</small>
+                  {waiting
+                    ? <div className="typing"><i /><i /><i /></div>
+                    : <div className="mobile-bubble">{message.content || (status === "cancelled" ? "回复已停止" : "回复生成失败")}</div>}
+                  <small>{messageStatusText(message)}</small>
                 </div>
               </div>
-            ))}
-
-            {sending && (
-              <div className="mobile-message-row assistant">
-                <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>
-                <div className="typing"><i /><i /><i /></div>
-              </div>
-            )}
+            );})}
           </div>
           {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
         </section>
@@ -414,7 +591,7 @@ export default function ChatPage() {
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
           <div className="mobile-story-actions">
-            <button onClick={() => setShowRestart(true)}><RestartIcon /><span>Restart</span></button>
+            <button disabled={sending} onClick={() => setShowRestart(true)}><RestartIcon /><span>Restart</span></button>
             <button onClick={useInspiration}><InspirationIcon /><span>Inspire</span></button>
             <button onClick={() => void shareCharacter()}><ShareIcon /><span>Share</span></button>
             <button disabled><SceneImageIcon /><span>Image</span></button>
@@ -440,10 +617,16 @@ export default function ChatPage() {
               }}
               placeholder="Type a message..."
               rows={1}
-              disabled={sending || switchingModel}
+              disabled={restarting || switchingModel}
             />
             <span>{selectedModel?.coin_cost ?? 0} ✦</span>
-            <button type="submit" disabled={!text.trim() || sending || switchingModel} aria-label="发送消息"><SendIcon /></button>
+            <button
+              type={canStopGeneration ? "button" : "submit"}
+              className={canStopGeneration ? "is-stopping" : ""}
+              disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
+              onClick={canStopGeneration ? stopGeneration : undefined}
+              aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+            >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
           </form>
         </section>
 
@@ -510,7 +693,7 @@ export default function ChatPage() {
         <div className="history-list">{history.map((item) => {
           const active = item.id === conversation.id;
           const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
-          return <button className={`history-item${active ? " active" : ""}`} key={item.id} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={`打开与 ${item.character.display_name} 的聊天`}>
+          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={`打开与 ${item.character.display_name} 的聊天`}>
             <span className="history-avatar"><Image src={avatar} alt="" fill sizes="42px" /></span>
             <span className="history-copy"><strong>{item.character.display_name}</strong><small>{item.character.tagline}</small></span>
           </button>;
@@ -573,7 +756,9 @@ export default function ChatPage() {
             ref={desktopMessageStageRef}
             onScroll={(event) => {
               const stage = event.currentTarget;
-              setShowScrollLatest(stage.scrollHeight - stage.scrollTop - stage.clientHeight > 72);
+              const nearBottom = stage.scrollHeight - stage.scrollTop - stage.clientHeight <= 72;
+              nearBottomRef.current.desktop = nearBottom;
+              setShowScrollLatest(!nearBottom);
             }}
           >
             <div className="reference-message-list">
@@ -583,22 +768,20 @@ export default function ChatPage() {
 
               <div className="reference-opening">{character.greeting}</div>
 
-              {messages.map((message) => (
-                <div className={`reference-message-row ${message.role}${message.failed ? " failed" : ""}`} key={message.id}>
+              {messages.map((message) => {
+                const status = getMessageStatus(message);
+                const waiting = !message.content && (status === "sending" || status === "streaming");
+                return (
+                <div className={`reference-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={message.id}>
                   {message.role === "assistant" && <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>}
                   <div className="reference-message-stack">
-                    <div className="reference-bubble">{message.content}</div>
-                    <small>{message.failed ? "发送失败" : message.pending ? "发送中…" : formatTime(message.created_at)}</small>
+                    {waiting
+                      ? <div className="typing"><i /><i /><i /></div>
+                      : <div className="reference-bubble">{message.content || (status === "cancelled" ? "回复已停止" : "回复生成失败")}</div>}
+                    <small>{messageStatusText(message)}</small>
                   </div>
                 </div>
-              ))}
-
-              {sending && (
-                <div className="reference-message-row assistant">
-                  <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>
-                  <div className="typing"><i /><i /><i /></div>
-                </div>
-              )}
+              );})}
             </div>
             {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
           </section>
@@ -660,10 +843,16 @@ export default function ChatPage() {
                 }}
                 placeholder="Enter to send, Shift+Enter for new line"
                 rows={1}
-                disabled={sending || switchingModel}
+                disabled={restarting || switchingModel}
               />
               <span className="composer-cost">{selectedModel?.coin_cost ?? 0} ✦</span>
-              <button type="submit" className="reference-send" disabled={!text.trim() || sending || switchingModel} aria-label="发送消息"><SendIcon /></button>
+              <button
+                type={canStopGeneration ? "button" : "submit"}
+                className={`reference-send${canStopGeneration ? " is-stopping" : ""}`}
+                disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
+                onClick={canStopGeneration ? stopGeneration : undefined}
+                aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+              >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
             </form>
           </section>
         </section>
@@ -676,7 +865,7 @@ export default function ChatPage() {
           <div className="restart-modal" onClick={(event) => event.stopPropagation()}>
             <span className="modal-icon">↺</span><h2>重新开始这段关系？</h2>
             <p>当前聊天记录会被归档，新对话将从角色的开场白重新开始。</p>
-            <div><button className="secondary" onClick={() => setShowRestart(false)}>取消</button><button className="danger" onClick={() => void confirmRestart()}>重新开始</button></div>
+            <div><button className="secondary" onClick={() => setShowRestart(false)}>取消</button><button className="danger" disabled={sending} onClick={() => void confirmRestart()}>重新开始</button></div>
           </div>
         </div>
       )}

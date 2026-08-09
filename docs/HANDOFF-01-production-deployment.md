@@ -1,6 +1,6 @@
 # Plum Chat 线上部署交接说明
 
-> 适用版本：后端 PR #79 已合并；前端 `codex/plum-public-test-auth`
+> 适用版本：前后端流式改动合并后的 `main`
 > 目标：通过一个 HTTPS 域名访问 Plum Chat，并完成邀请码登录、真实模型聊天和金币扣减测试。
 
 ## 1. 上线前准备
@@ -15,7 +15,7 @@
 
 - 前端：`git@github.com:huanshanxiaoyao/plum_chat.git`
 - 后端：`git@github.com:huanshanxiaoyao/ai4all_bridge.git`
-- 后端使用 `main`。前端部署前应先把 `codex/plum-public-test-auth` 合并到 `main`；未合并时只能明确部署该分支。
+- 前后端都使用已完成 CI 和评审的 `main`，上线记录中固定具体 commit SHA。
 
 ## 2. 更新并启动后端
 
@@ -41,6 +41,7 @@ PLUM_SESSION_COOKIE_NAME=plum_session
 PLUM_CSRF_COOKIE_NAME=plum_csrf
 PLUM_SESSION_DAYS=30
 PLUM_SESSION_COOKIE_SECURE=true
+PLUM_CHAT_STREAMING_ENABLED=false
 
 AI4ALL_BRIDGE_SECRET=<strong-random-secret>
 ADMIN_TOKEN=<strong-random-token>
@@ -56,7 +57,7 @@ LLM_ANTHROPIC_API_KEY=<anthropic-compatible-key-if-used>
 Environment=AI4ALL_ALLOW_AUTO_MIGRATE=1
 ```
 
-重启后端时会在 PostgreSQL advisory lock 保护下应用 migration 67，并把历史 `fibre_*` 产品数据迁移为 `plum_*`。建议在低流量时段执行：
+重启后端时会在 PostgreSQL advisory lock 保护下应用截至 migration 69 的变更；其中 migration 67 把历史 `fibre_*` 产品数据迁移为 `plum_*`，68–69 增加流式 run 与取消状态。建议在低流量时段执行：
 
 ```bash
 sudo systemctl daemon-reload
@@ -130,6 +131,22 @@ server {
     ssl_certificate     /path/to/fullchain.pem;
     ssl_certificate_key /path/to/privkey.pem;
 
+    location ~ ^/api/v1/products/plum/conversations/[^/]+/turns/stream$ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
@@ -150,7 +167,9 @@ sudo systemctl reload nginx
 curl -I https://plum.example.com/
 ```
 
-不要单独把 `/api/v1/products/plum/*` 从 nginx 转发到 FastAPI；请求应先进入 Next.js，再由构建时配置的同源 rewrite 转发到后端，这样 Cookie 和 CSRF 才保持同源。
+首选让精确的流式 location 进入 Next.js rewrite。若线上实测确认 Next 层缓冲，可只把该 location 的 `proxy_pass` 改成 `http://127.0.0.1:8180`；浏览器 URL 不变，Cookie/CSRF 仍同源。其他 Plum API 继续走 Next，禁止浏览器跨域访问后端 `8180`。完整探针和判定方法见 `TECH-08-streaming-chat.md` 第 9 节。
+
+先保持 `PLUM_CHAT_STREAMING_ENABLED=false` 完成同步路径冒烟；确认代理配置后再改为 `true`、重启后端，并用真实 HTTPS 域名验证首个 `message.delta` 早于 `turn.completed`。
 
 ## 5. 创建内测邀请码
 
@@ -171,6 +190,7 @@ curl -I https://plum.example.com/
 - [ ] 两个不同邀请码分别获得不同账号和 1000 初始金币。
 - [ ] 三档模型可切换，刷新后选择仍保留。
 - [ ] 三档模型均能返回真实回复，并分别扣减 1/3/5 金币。
+- [ ] 长回复在完成前出现多次增量；Stop 后 1 秒内停止追加，刷新后 partial 状态正确。
 - [ ] 用户 A 无法看到用户 B 的会话、消息、余额、点赞和收藏。
 - [ ] 同一码换浏览器登录后恢复原账号，余额不重复赠送。
 - [ ] 注销后旧会话失效。
