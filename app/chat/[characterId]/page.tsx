@@ -79,6 +79,9 @@ function RestartIcon() {
 function ShareIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.2" /><circle cx="6" cy="12" r="2.2" /><circle cx="18" cy="19" r="2.2" /><path d="m8 11 8-5M8 13l8 5" /></svg>;
 }
+function CollapseProfileIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
+}
 function HistoryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.7M4 4v4.7h4.7M12 7.5V12l3 2" /></svg>; }
 
 function ChatLoading() {
@@ -508,8 +511,8 @@ export default function ChatPage() {
             <Image className="role-profile-cover" src={cover} alt={`${displayName} profile`} fill priority sizes="350px" />
             <div className="profile-image-shade" />
             <div className="profile-top-actions">
-              <button className="cid-pill">CID: {character.id.replace("char_", "").slice(0, 5)}… <span>▣</span></button>
-              <button className="hide-profile" onClick={() => setShowProfile(false)}>Hide Profile <span>›</span></button>
+              <button className="profile-icon-action has-tooltip" data-tooltip="Share character" aria-label="分享角色" onClick={() => void shareCharacter()}><ShareIcon /></button>
+              <button className="profile-icon-action has-tooltip" data-tooltip="Hide profile" aria-label="收起角色资料" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
             </div>
 
             <div className="profile-hover-content">

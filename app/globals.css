@@ -125,11 +125,10 @@ svg { display: block; }
 .role-profile { position: relative; isolation: isolate; background: #171012; }
 .role-profile-cover { z-index: -3; object-fit: cover; transition: transform .5s ease, filter .35s ease; }
 .profile-image-shade { position: absolute; z-index: -2; inset: 0; opacity: 0; background: linear-gradient(180deg, rgba(6,4,5,.12) 8%, rgba(6,4,5,.38) 32%, rgba(6,4,5,.83) 100%); transition: opacity .28s ease; }
-.profile-top-actions { position: absolute; top: 13px; left: 63px; right: 14px; display: flex; justify-content: flex-end; gap: 8px; }
-.profile-top-actions button { height: 33px; padding: 0 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 999px; background: rgba(5,4,5,.42); backdrop-filter: blur(10px); font-size: 10px; cursor: pointer; }
-.cid-pill { color: rgba(255,255,255,.78); }
-.cid-pill span { margin-left: 3px; }
-.hide-profile span { margin-left: 5px; font-size: 18px; line-height: 0; }
+.profile-top-actions { position: absolute; z-index: 3; top: 13px; right: 14px; display: flex; justify-content: flex-end; gap: 7px; }
+.profile-icon-action { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; color: rgba(255,255,255,.84); background: rgba(5,4,5,.35); backdrop-filter: blur(10px); cursor: pointer; transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }
+.profile-icon-action:hover { color: #fff; border-color: rgba(255,255,255,.55); background: rgba(5,4,5,.58); transform: translateY(-1px); }
+.profile-icon-action svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .profile-hover-content { position: absolute; z-index: -1; inset: 78px 14px 0; padding: 12px 0 17px; overflow-y: auto; display: flex; flex-direction: column; opacity: 0; transform: translateY(8px); scrollbar-width: none; pointer-events: none; transition: opacity .26s ease, transform .28s ease; }
 .profile-hover-content > :first-child { margin-top: auto; }
 .profile-hover-content::-webkit-scrollbar { display: none; }
