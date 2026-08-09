@@ -19,7 +19,7 @@ function formatTime(value?: string) {
 function SearchIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
 }
-function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.3" /><path d="M3.8 18c.7-3.1 2.4-4.7 5.2-4.7s4.5 1.6 5.2 4.7M18 7v6M15 10h6" /></svg>; }
+function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>; }
 function CommunityIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.3" /><path d="M3.5 19c.7-3.5 2.5-5.2 5.5-5.2s4.8 1.7 5.5 5.2M14.2 14.5c2.9-.7 5 .8 6.3 3.6" /></svg>; }
 function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
 function SendIcon() {
@@ -82,7 +82,7 @@ function ShareIcon() {
 function CollapseProfileIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
 }
-function HistoryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.7M4 4v4.7h4.7M12 7.5V12l3 2" /></svg>; }
+function CollectionsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5h10.5A2.5 2.5 0 0 1 20 8v10.5H9.5A2.5 2.5 0 0 1 7 16V5.5Z" /><path d="M7 8H5.5A2.5 2.5 0 0 0 3 10.5V19a2 2 0 0 0 2 2h10.5a2.5 2.5 0 0 0 2.5-2.5" /><path className="collection-spark" d="m13.2 7.1 1.05 2.55 2.55 1.05-2.55 1.05-1.05 2.55-1.05-2.55L9.6 10.7l2.55-1.05 1.05-2.55Z" /><path className="collection-spark" d="m17.4 5 .38.92.92.38-.92.38-.38.92-.38-.92-.92-.38.92-.38.38-.92Z" /></svg>; }
 
 function ChatLoading() {
   return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>正在走进角色的世界…</p></main>;
@@ -96,6 +96,8 @@ export default function ChatPage() {
   const mobileMessageStageRef = useRef<HTMLElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const historyRailRef = useRef<HTMLElement>(null);
+  const roleProfileRef = useRef<HTMLElement>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [experience, setExperience] = useState<CharacterExperience | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -170,6 +172,16 @@ export default function ChatPage() {
     });
     setShowScrollLatest(false);
   }, [messages, sending]);
+  useEffect(() => {
+    function collapseHistoryIfItOverlapsProfile() {
+      if (!historyOpen || !historyRailRef.current || !roleProfileRef.current) return;
+      const rail = historyRailRef.current.getBoundingClientRect();
+      const profile = roleProfileRef.current.getBoundingClientRect();
+      if (rail.right + 8 > profile.left) setHistoryOpen(false);
+    }
+    window.addEventListener("resize", collapseHistoryIfItOverlapsProfile);
+    return () => window.removeEventListener("resize", collapseHistoryIfItOverlapsProfile);
+  }, [historyOpen]);
 
   function redirectIfUnauthorized(requestError: unknown) {
     if (requestError instanceof ApiError && requestError.status === 401) {
@@ -486,15 +498,15 @@ export default function ChatPage() {
         <div className="header-brand-group"><Brand /><Link className="community-link" href="/community"><CommunityIcon /><span>Community</span></Link></div>
         <div className="tipsy-header-right">
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
-          <button className="header-circle" aria-label="创建角色" onClick={() => router.push("/create")}><CreateIcon /></button>
+          <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create")}><CreateIcon /></button>
           <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>更多语言后续接入</small></div>}</div>
           <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>金币余额</small><strong>{balance.toLocaleString("zh-CN")}</strong><h3>消费记录</h3><p>暂无消费记录</p><button disabled>充值入口 · 后续开放</button></div>}</div>
           {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}</div>}
         </div>
       </header>
 
-      {user && history.length > 0 && <aside className={`chat-history-rail${historyOpen ? " open" : ""}`} aria-label="历史聊天角色">
-        <button className="history-toggle" onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen} aria-label={historyOpen ? "收起历史聊天" : "展开历史聊天"}><HistoryIcon /></button>
+      {user && history.length > 0 && <aside ref={historyRailRef} className={`chat-history-rail${historyOpen ? " open" : ""}`} aria-label="Collections">
+        <button className="history-toggle" onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen} aria-label={historyOpen ? "Collapse Collections" : "Open Collections"} title="Collections"><CollectionsIcon /></button>
         <div className="history-list">{history.map((item) => {
           const active = item.id === conversation.id;
           const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
@@ -507,12 +519,12 @@ export default function ChatPage() {
 
       <div className={`reference-chat-workspace${showProfile ? "" : " profile-collapsed"}`}>
         {showProfile && (
-          <aside className="role-profile" aria-label={`${displayName} 角色资料`}>
+          <aside ref={roleProfileRef} className="role-profile" aria-label={`${displayName} 角色资料`}>
             <Image className="role-profile-cover" src={cover} alt={`${displayName} profile`} fill priority sizes="350px" />
             <div className="profile-image-shade" />
             <div className="profile-top-actions">
-              <button className="profile-icon-action has-tooltip" data-tooltip="Share character" aria-label="分享角色" onClick={() => void shareCharacter()}><ShareIcon /></button>
-              <button className="profile-icon-action has-tooltip" data-tooltip="Hide profile" aria-label="收起角色资料" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
+              <button className="profile-icon-action" aria-label="分享角色" title="分享角色" onClick={() => void shareCharacter()}><ShareIcon /></button>
+              <button className="profile-icon-action" aria-label="收起角色资料" title="收起角色资料" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
             </div>
 
             <div className="profile-hover-content">
