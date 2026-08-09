@@ -13,7 +13,7 @@ const MAIN_TABS = ["For You", "Trending", "Latest", "Popular", "Following"] as c
 const HOT_SEARCHES = ["Slow burn", "Enemies to lovers", "Fantasy", "Protective", "After hours"];
 
 function SearchIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>; }
-function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.3" /><path d="M3.8 18c.7-3.1 2.4-4.7 5.2-4.7s4.5 1.6 5.2 4.7M18 7v6M15 10h6" /></svg>; }
+function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>; }
 function FilterIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M8 12h8M10.5 17h3" /></svg>; }
 function MessageIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z" /></svg>; }
 function LoginIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.8-4 2.9-6 6.5-6s5.7 2 6.5 6" /></svg>; }
@@ -160,7 +160,7 @@ export default function FeedPage() {
       <div className="header-brand-group"><Brand /><Link className="community-link" href="/community"><CommunityIcon /><span>Community</span></Link></div>
       <div className="tipsy-header-right">
         <button className="header-circle" aria-label="搜索" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
-        <button className="header-circle" aria-label="创建角色" onClick={openCreate}><CreateIcon /></button>
+        <button className="header-circle" aria-label="创作" title="创作" onClick={openCreate}><CreateIcon /></button>
         <div className="header-menu-wrap">
           <button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>
           {languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>更多语言后续接入</small></div>}
