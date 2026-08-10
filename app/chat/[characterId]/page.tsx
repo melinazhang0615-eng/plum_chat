@@ -67,6 +67,9 @@ function GalleryIcon() {
 function InspirationIcon() {
   return <svg viewBox="0 0 26 26" aria-hidden="true"><path d="M9.4 18.4h7.2M10.5 21.2h5M13 3.4a7 7 0 0 0-4.2 12.6c.85.65 1.3 1.31 1.42 2h5.56c.12-.69.57-1.35 1.42-2A7 7 0 0 0 13 3.4Z" /><path d="M13 0v2M3.9 4.1l1.45 1.45M0 13h2M22.1 4.1l-1.45 1.45M26 13h-2" /></svg>;
 }
+function CommentIcon() {
+  return <svg className="comment-ico" viewBox="0 0 16 16" aria-hidden="true"><path fillRule="evenodd" clipRule="evenodd" d="M8 1.7c3.5 0 6.3 2.3 6.3 5.2 0 2.88-2.8 5.2-6.3 5.2-.62 0-1.22-.07-1.78-.2l-3.02 1.5c-.28.14-.6-.12-.52-.42l.63-2.3C2.06 9.86 1.7 8.64 1.7 6.9 1.7 4 4.5 1.7 8 1.7ZM5.4 6a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Z" /></svg>;
+}
 function ScrollLatestIcon() {
   return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M22.4 21.6H9.6M16 9.6v9.1m0 0 4-4.2m-4 4.2-4-4.2" /></svg>;
 }
@@ -734,13 +737,9 @@ export default function ChatPage() {
           <header className="reference-conversation-toolbar">
             <div className="conversation-character-status">
               <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label="显示角色资料"><Image src={cover} alt={displayName} fill sizes="48px" /></button>
-              <div className="relationship-level has-tooltip" data-tooltip="Relationship level" aria-label={`关系等级 ${viewerState.relationship_level}`}><LevelIcon /><strong>Lv{viewerState.relationship_level}</strong></div>
+              <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
-              <button className="conversation-stat-pill has-tooltip" data-tooltip="Story chapter" aria-label={`当前故事章节 ${viewerState.current_chapter}`}><BookIcon /><strong>{viewerState.current_chapter}</strong></button>
-              <button className="conversation-stat-pill audio-mode has-tooltip" data-tooltip="Auto voice · coming soon" aria-label="自动朗读，暂未开放" disabled><MutedAutoIcon /><strong>Auto</strong></button>
-              <button className={`conversation-stat-pill has-tooltip${viewerHasLiked ? " active" : ""}`} data-tooltip={viewerHasLiked ? "Unlike character" : "Like character"} aria-label={viewerHasLiked ? "取消点赞" : "点赞角色"} aria-pressed={viewerHasLiked} disabled={reactionBusy} onClick={() => void toggleLike()}><ThumbIcon /><strong>{visibleLikeCount}</strong></button>
-              <button className={`conversation-stat-pill favorite-stat has-tooltip${viewerHasFavorited ? " active" : ""}`} data-tooltip={viewerHasFavorited ? "Remove favorite" : "Favorite character"} aria-label={viewerHasFavorited ? "取消收藏角色" : "收藏角色"} aria-pressed={viewerHasFavorited} disabled={reactionBusy} onClick={() => void toggleFavorite()}><HeartIcon /><strong>{visibleFavoriteCount}</strong></button>
               <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
             </div>
             {showChatMenu && (
@@ -820,14 +819,8 @@ export default function ChatPage() {
               </div>
             )}
             <div className="composer-tools">
-              {!showProfile && <button onClick={() => setShowProfile(true)}><RoleIcon />Profile</button>}
-              <button className="model-trigger has-tooltip" data-tooltip={selectedModel ? `${selectedModel.display_name} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><ModelIcon /></button>
-              <button onClick={() => setComposerPanel(composerPanel === "role" ? null : "role")}><RoleIcon />Role Card</button>
-              <button onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><NoteIcon />Pinned</button>
-              <span />
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Create image · coming soon" aria-label="生成场景图片，暂未开放" disabled><SceneImageIcon /></button>
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Create video · coming soon" aria-label="生成场景视频，暂未开放" disabled><SceneVideoIcon /></button>
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Media gallery · coming soon" aria-label="媒体图库，暂未开放" disabled><GalleryIcon /></button>
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${selectedModel.display_name} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{selectedModel?.display_name ?? "Model"}</span></button>
+              <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
               <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
@@ -841,11 +834,10 @@ export default function ChatPage() {
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder="Enter to send, Shift+Enter for new line"
+                placeholder="Enter to send，shift+enter for new line"
                 rows={1}
                 disabled={restarting || switchingModel}
               />
-              <span className="composer-cost">{selectedModel?.coin_cost ?? 0} ✦</span>
               <button
                 type={canStopGeneration ? "button" : "submit"}
                 className={`reference-send${canStopGeneration ? " is-stopping" : ""}`}
