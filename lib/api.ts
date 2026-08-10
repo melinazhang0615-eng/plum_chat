@@ -72,12 +72,13 @@ function cookieValue(name: string) {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
   const csrf = !["GET", "HEAD", "OPTIONS"].includes(method) ? cookieValue("plum_csrf") : "";
+  const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     cache: "no-store",
     credentials: "same-origin",
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.body && !hasFormBody ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
       ...init?.headers,
     },
@@ -88,6 +89,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(detail, response.status);
   }
   return payload as T;
+}
+
+export type CreatorMedia = {
+  media_id: string;
+  mime: "image/jpeg" | "image/png";
+  bytes: number;
+  width: number;
+  height: number;
+  preview_url: string;
+  pending_expires_at: string;
+};
+
+export function uploadCreatorPortrait(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("kind", "image");
+  body.append("purpose", "character_portrait");
+  return request<{ status: string; media: CreatorMedia }>("/creator/media/uploads", {
+    method: "POST",
+    body,
+  });
 }
 
 export function getBootstrap() {
