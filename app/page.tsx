@@ -140,7 +140,7 @@ export default function FeedPage() {
 
   function openCreate() {
     if (!user) { setPendingTarget("create"); setLoginOpen(true); return; }
-    router.push("/create");
+    router.push("/create/v1");
   }
 
   function afterAuthentication(authenticatedUser: AuthUser) {
@@ -149,7 +149,7 @@ export default function FeedPage() {
       .then((bootstrap) => setBalance(bootstrap.wallet.balance))
       .catch(() => setBalance(0));
     const target = pendingTarget; setPendingTarget(null);
-    if (target === "create") router.push("/create");
+    if (target === "create") router.push("/create/v1");
     else if (target) void enterCharacter(target);
   }
 

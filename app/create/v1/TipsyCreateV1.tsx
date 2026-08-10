@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import { Brand, CoinBadge } from "@/components/brand";
-import { ApiError, uploadCreatorPortrait } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { Brand } from "@/components/brand";
+import { ApiError, getBootstrap, logout, uploadCreatorPortrait } from "@/lib/api";
+import type { AuthUser } from "@/lib/types";
 import styles from "./tipsy-v1.module.css";
 
 type Rating = "Limited" | "Limitless";
@@ -78,6 +80,12 @@ function Icon({ name }: { name: "upload" | "file" | "book" | "save" | "reset" | 
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
+function SearchIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.3 4.3"/></svg>; }
+function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>; }
+function LoginIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20c.8-4 2.9-6 6.5-6s5.7 2 6.5 6"/></svg>; }
+function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z"/><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z"/></svg>; }
+function CommunityIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3"/><circle cx="17" cy="10" r="2.3"/><path d="M3.5 19c.7-3.5 2.5-5.2 5.5-5.2s4.8 1.7 5.5 5.2M14.2 14.5c2.9-.7 5 .8 6.3 3.6"/></svg>; }
+
 function Field({ label, required, hint, count, children }: { label: string; required?: boolean; hint?: string; count?: string; children: React.ReactNode }) {
   return <label className={styles.field}>
     <span className={styles.labelRow}><b>{label}{required && <i>*</i>}</b>{count && <small>{count}</small>}</span>
@@ -143,6 +151,7 @@ function mapTavernCard(raw: unknown): Partial<CharacterDraft> {
 }
 
 export function TipsyCreateV1() {
+  const router = useRouter();
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
   const [hydrated, setHydrated] = useState(false);
   const [saved, setSaved] = useState(true);
@@ -154,6 +163,11 @@ export function TipsyCreateV1() {
   const [mobilePreview, setMobilePreview] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [balance, setBalance] = useState(0);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarDrag = useRef<{ pointerId: number; startX: number; startY: number; positionX: number; positionY: number; width: number; height: number } | null>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
@@ -195,6 +209,15 @@ export function TipsyCreateV1() {
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
+  useEffect(() => {
+    void getBootstrap()
+      .then((bootstrap) => { setUser(bootstrap.user); setBalance(bootstrap.wallet.balance); })
+      .catch((error) => {
+        if (!(error instanceof ApiError && error.status === 401)) return;
+        setUser(null); setBalance(0);
+      });
+  }, []);
+
   const tags = draft.tags.slice(0, 5);
   const previewCover = draft.image || "/characters/luna.svg";
   const canCreate = Boolean(
@@ -213,6 +236,13 @@ export function TipsyCreateV1() {
 
   function update(patch: Partial<CharacterDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
+  }
+
+  async function signOut() {
+    try { await logout(); } catch { /* An expired session is already signed out. */ }
+    setUser(null);
+    setBalance(0);
+    setAccountOpen(false);
   }
 
   function toggleTag(tag: string) {
@@ -351,14 +381,30 @@ export function TipsyCreateV1() {
   }
 
   return <main className={styles.shell}>
-    <header className={styles.topbar}>
-      <div className={styles.brandGroup}><Brand ariaLabel="Back to Plum home"/><span>CREATE</span></div>
-      <nav><Link href="/create">Requirements</Link><Link href="/create/all-in-one">Research prototype</Link><span className={styles.saveStatus}><i className={saved ? styles.saved : ""}/>{saved ? "Auto-saved" : "Saving…"}</span><CoinBadge balance={1280} compact title="Mock coin balance" label="Coins"/></nav>
+    <header className="tipsy-header">
+      <div className="header-brand-group"><Brand ariaLabel="Back to Plum home"/><Link className="community-link" href="/community"><CommunityIcon/><span>Community</span></Link></div>
+      <div className="tipsy-header-right">
+        <button className="header-circle" aria-label="Search" onClick={() => router.push("/?search=1")}><SearchIcon/></button>
+        <button className="header-circle" aria-label="Create" title="Create" aria-current="page"><CreateIcon/></button>
+        <div className="header-menu-wrap">
+          <button className="header-circle language-symbol" aria-label="Change language" aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon/></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button>简体中文</button><button className="selected">English <span>✓</span></button><small>More languages are coming.</small></div>}
+        </div>
+        {user && <div className="header-menu-wrap">
+          <button className="coin-button" onClick={() => setWalletOpen((open) => !open)} aria-label={`Coin balance ${balance}`}><span>✦</span><strong>{balance.toLocaleString("en-US")}</strong></button>
+          {walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Recent activity</h3><p>No activity yet.</p><button disabled>Top up · Coming later</button></div>}
+        </div>}
+        {user ? <div className="header-menu-wrap">
+          <button className="account-button" onClick={() => setAccountOpen((open) => !open)} aria-label="Account settings"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
+          {accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · Coming later</button><button onClick={() => void signOut()}>Sign out</button></div>}
+        </div> : <button className="header-circle" aria-label="Sign in" onClick={() => router.push("/?login=1")}><LoginIcon/></button>}
+      </div>
     </header>
 
     <section className={styles.pageIntro}>
       <div><span>CREATE CHARACTER</span><h1>Create a character worth meeting</h1><p>Start with a name, then shape the look and story—or import something you already have.</p></div>
       <div className={styles.pageIntroActions}>
+        <span className={styles.saveStatus}><i className={saved ? styles.saved : ""}/>{saved ? "Auto-saved" : "Saving…"}</span>
         <div className={styles.importMenuWrap}>
           <button className={styles.importEntryButton} onClick={() => setImportOpen((open) => !open)} aria-expanded={importOpen} aria-label="Import existing content"><Icon name="upload"/>Import existing content</button>
           {importOpen && <section className={styles.importPopover} aria-label="Import existing content">
@@ -477,7 +523,6 @@ export function TipsyCreateV1() {
           <button onClick={() => setDialog("reset")}><Icon name="reset"/><span>Reset</span></button>
           <button onClick={saveNow}><Icon name="save"/><span>Save</span></button>
           <button className={styles.createButton} disabled={!canCreate} onClick={() => setDialog("created")}>Create</button>
-          <Link href="/create"><Icon name="book"/>Guide</Link>
         </footer>
       </div>
 
