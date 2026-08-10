@@ -18,21 +18,6 @@
 .shell button, .shell input, .shell textarea, .shell select { font: inherit; }
 .shell svg { width: 21px; height: 21px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
 
-.topbar {
-  height: 62px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 28px;
-  border-bottom: 1px solid rgba(255,255,255,.06);
-  background: rgba(20,8,10,.68);
-  backdrop-filter: blur(20px);
-}
-.brandGroup { display: flex; align-items: center; gap: 13px; }
-.brandGroup > span { padding-left: 12px; border-left: 1px solid var(--line); color: rgba(255,255,255,.35); font-size: 10px; font-weight: 700; letter-spacing: .18em; }
-.topbar nav { display: flex; align-items: center; gap: 9px; }
-.topbar nav > a { padding: 7px 10px; color: rgba(255,255,255,.52); border-radius: 8px; font-size: 11px; text-decoration: none; }
-.topbar nav > a:hover { color: #fff; background: rgba(255,255,255,.05); }
 .saveStatus { display: inline-flex; align-items: center; gap: 7px; margin: 0 5px; color: rgba(255,255,255,.35); font-size: 10px; }
 .saveStatus i { width: 6px; height: 6px; border-radius: 50%; background: #d49466; animation: pulse 1s infinite; }
 .saveStatus i.saved { background: #78c99b; animation: none; }
@@ -208,7 +193,7 @@
 .confirmations b { font-size: 10px; }
 .confirmations small { color: rgba(255,255,255,.3); font-size: 8px; }
 
-.actionBar { display: grid; grid-template-columns: 1fr .8fr .9fr 2fr .65fr; gap: 9px; align-items: center; padding: 12px 22px; border-top: 1px solid var(--line); background: rgba(29,13,15,.96); }
+.actionBar { display: grid; grid-template-columns: 1fr .8fr .9fr 2fr; gap: 9px; align-items: center; padding: 12px 22px; border-top: 1px solid var(--line); background: rgba(29,13,15,.96); }
 .actionBar button, .actionBar a { height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 13px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; color: rgba(255,255,255,.72); background: rgba(255,255,255,.025); cursor: pointer; font-size: 10px; text-decoration: none; }
 .actionBar button:hover, .actionBar a:hover { color: #fff; border-color: rgba(255,255,255,.25); }
 .actionBar svg { width: 18px; }
