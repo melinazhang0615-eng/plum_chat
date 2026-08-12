@@ -8,6 +8,11 @@ import { Brand } from "@/components/brand";
 import { ApiError, cancelTurn, createConversation, getBootstrap, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, MessageStatus, ModelProfile } from "@/lib/types";
+import { SignInCard, SignInReward, WelcomeModal } from "@/components/onboarding";
+import { GUEST_LIMITS, SIGNIN_REWARD_COINS, bumpGuestQuota, canGuestContinue, clearPendingReward, getGuestProfile, getGuestQuota, getMockAuth, getUserName, hasPendingReward, markNudged, mockSignOut, wasNudged } from "@/lib/guest";
+
+// Guest prototype: hidden instruction the Continue button sends; filtered from the visible transcript.
+const CONTINUE_PROMPT = "*holds your gaze, saying nothing* Go on.";
 
 function formatTime(value?: string) {
   if (!value) return "Just now";
@@ -106,10 +111,10 @@ function getMessageStatus(message: ChatMessage): MessageStatus {
 
 function messageStatusText(message: ChatMessage) {
   const status = getMessageStatus(message);
-  if (status === "sending") return "发送中…";
-  if (status === "streaming") return "正在回复…";
-  if (status === "cancelled") return "已停止";
-  if (status === "failed") return message.role === "user" ? "发送失败" : "生成失败";
+  if (status === "sending") return "Sending…";
+  if (status === "streaming") return "Replying…";
+  if (status === "cancelled") return "Stopped";
+  if (status === "failed") return message.role === "user" ? "Failed to send" : "Failed to generate";
   return formatTime(message.created_at);
 }
 
@@ -158,6 +163,28 @@ export default function ChatPage() {
   const [reactionBusy, setReactionBusy] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"model" | "role" | "pinned" | "more" | null>(null);
+  // Guest onboarding prototype (front-end mock; see lib/guest.ts)
+  const [mockAuthed, setMockAuthed] = useState(true); // assume signed-in until mount to avoid flash
+  const [guestGate, setGuestGate] = useState<{ reason: "typed" | "continue" | "header"; pendingText?: string } | null>(null);
+  const [showNudge, setShowNudge] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showReward, setShowReward] = useState(false);
+
+  useEffect(() => {
+    const authed = Boolean(getMockAuth());
+    setMockAuthed(authed);
+    // Deep links land here directly — first-time guests still get the welcome step.
+    // Members (incl. returning ones on a fresh device) never re-onboard.
+    if (!authed && !getGuestProfile()) setShowWelcome(true);
+    if (hasPendingReward()) setShowReward(true);
+    // Keep auth in sync across tabs (sign in/out in one tab updates the others).
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "plum_mock_auth") setMockAuthed(Boolean(getMockAuth()));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+  const guestMode = !mockAuthed;
 
   const selectedModel = useMemo(
     () => models.find((item) => item.profile === conversation?.model_profile),
@@ -166,6 +193,10 @@ export default function ChatPage() {
   const generating = generationState !== "idle";
   const canStopGeneration = generating && chatStreamingEnabled;
   const sending = generating || restarting;
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => !(message.role === "user" && message.content === CONTINUE_PROMPT)),
+    [messages],
+  );
 
   async function load() {
     setLoading(true);
@@ -197,7 +228,7 @@ export default function ChatPage() {
         router.replace("/?login=1");
         return;
       }
-      setError("聊天暂时加载失败，请返回后重试。");
+      setError("Chat failed to load. Go back and try again.");
     } finally {
       setLoading(false);
     }
@@ -321,7 +352,7 @@ export default function ChatPage() {
     } catch (modelError) {
       setConversation(previous);
       if (redirectIfUnauthorized(modelError)) return;
-      setError("模型切换失败，请重试。");
+      setError("Failed to switch model. Please try again.");
     } finally {
       setSwitchingModel(false);
     }
@@ -330,16 +361,53 @@ export default function ChatPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const content = text.trim();
-    if (!conversation || !content || sending || switchingModel || !selectedModel) return;
-    if (balance < selectedModel.coin_cost) {
-      setError("金币余额不足，暂时无法发送这条消息。");
+    if (!content || sending) return;
+    if (guestMode && getGuestQuota().typed >= GUEST_LIMITS.typed) {
+      setGuestGate({ reason: "typed", pendingText: content });
       return;
+    }
+    setShowNudge(false);
+    setText("");
+    const ok = await sendMessage(content);
+    if (ok && guestMode) bumpGuestQuota("typed"); // only consume quota on successful sends
+  }
+
+  async function sendGuestContinue() {
+    if (sending || switchingModel) return;
+    if (!canGuestContinue(params.characterId)) {
+      setGuestGate({ reason: "continue" });
+      return;
+    }
+    setShowNudge(false);
+    const ok = await sendMessage(CONTINUE_PROMPT);
+    if (!ok) return;
+    const next = bumpGuestQuota("continues", params.characterId);
+    if (next.continues >= GUEST_LIMITS.nudgeAtContinue && !wasNudged()) {
+      markNudged();
+      setShowNudge(true);
+    }
+  }
+
+  function afterGateSignIn() {
+    setMockAuthed(true);
+    if (hasPendingReward()) setShowReward(true);
+    const gate = guestGate;
+    setGuestGate(null);
+    if (gate?.pendingText) { setText(""); void sendMessage(gate.pendingText); }
+    else if (gate?.reason === "continue") void sendMessage(CONTINUE_PROMPT);
+  }
+
+  async function sendMessage(content: string): Promise<boolean> {
+    if (!conversation || !content || sending || switchingModel || !selectedModel) return false;
+    if (balance < selectedModel.coin_cost) {
+      setError("Not enough coins to send this message.");
+      return false;
     }
     const requestId = crypto.randomUUID();
     const assistantId = `local-assistant:${requestId}`;
     const controller = new AbortController();
     let accepted = false;
-    setText("");
+    let failed = false;
     setMessages((current) => [
       ...current,
       { id: requestId, message_id: requestId, role: "user", content, status: "sending" },
@@ -387,13 +455,14 @@ export default function ChatPage() {
                 status: "cancelled",
               } : item));
             } else if (streamEvent.type === "turn.failed") {
+              failed = true;
               flushAssistantBuffer(assistantId);
               setBalance(streamEvent.wallet.balance);
               setMessages((current) => current.map((item) => item.id === assistantId
                 ? { ...item, status: "failed" }
                 : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
-              setText((current) => current || content);
-              setError("回复生成失败，请重试。");
+              if (content !== CONTINUE_PROMPT) setText((current) => current || content);
+              setError("Failed to generate a response. Please try again.");
             }
           },
         });
@@ -411,20 +480,22 @@ export default function ChatPage() {
         setBalance(result.wallet.balance);
       }
     } catch (sendError) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return true; // user stopped generation — the turn was accepted and charged
+      failed = true;
       flushAssistantBuffer(assistantId);
       setMessages((current) => current.map((item) => item.id === assistantId
         ? { ...item, status: "failed" }
         : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
-      if (redirectIfUnauthorized(sendError)) return;
-      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息或回复中断，请再试一次。");
-      setText((current) => current || content);
+      if (redirectIfUnauthorized(sendError)) return false;
+      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "Not enough coins." : "The message or response was interrupted. Please try again.");
+      if (content !== CONTINUE_PROMPT) setText((current) => current || content);
     } finally {
       if (activeTurnRef.current?.requestId === requestId) activeTurnRef.current = null;
       if (abortRef.current === controller) abortRef.current = null;
       setGenerationState("idle");
       focusVisibleComposer();
     }
+    return !failed;
   }
 
   async function confirmRestart() {
@@ -440,7 +511,7 @@ export default function ChatPage() {
       router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}`);
     } catch (restartError) {
       if (redirectIfUnauthorized(restartError)) return;
-      setError("重新开始失败，请稍后再试。");
+      setError("Failed to restart. Please try again later.");
     } finally {
       setRestarting(false);
     }
@@ -448,7 +519,8 @@ export default function ChatPage() {
 
   async function signOut() {
     try { await logout(); } catch { /* an expired session is already signed out */ }
-    router.replace("/?login=1");
+    mockSignOut();
+    router.replace("/");
   }
 
   if (loading) return <ChatLoading />;
@@ -511,7 +583,7 @@ export default function ChatPage() {
     } catch (likeError) {
       setLiked(null);
       if (redirectIfUnauthorized(likeError)) return;
-      setError("点赞状态保存失败，请重试。");
+      setError("Could not save your like. Please try again.");
     } finally {
       setReactionBusy(false);
     }
@@ -536,7 +608,7 @@ export default function ChatPage() {
     } catch (favoriteError) {
       setFavorited(null);
       if (redirectIfUnauthorized(favoriteError)) return;
-      setError("收藏状态保存失败，请重试。");
+      setError("Could not save your favorite. Please try again.");
     } finally {
       setReactionBusy(false);
     }
@@ -547,18 +619,18 @@ export default function ChatPage() {
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
       <div className="chat-world-overlay" />
 
-      <section className="mobile-chat-shell" aria-label={`${displayName} 移动端对话`}>
+      <section className="mobile-chat-shell" aria-label={`${displayName} mobile chat`}>
         <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />
         <div className="mobile-chat-shade" />
 
         <header className="mobile-chat-header">
-          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label="返回角色列表"><BackIcon /></button>
-          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label="查看角色资料">
+          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label="Back to characters"><BackIcon /></button>
+          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label="View profile">
             <span><Image src={cover} alt="" fill sizes="34px" /></span>
             <b>{displayName}</b>
             {primaryBadge && <i title={primaryBadge.display_name}>✦</i>}
           </button>
-          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
+          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label="More settings"><MoreIcon /></button>
         </header>
 
         <section
@@ -577,7 +649,7 @@ export default function ChatPage() {
             <div className="mobile-tagline"><b>Tagline:</b> “{tagline}”</div>
             <div className="mobile-opening">{character.greeting}</div>
 
-            {messages.map((message) => {
+            {visibleMessages.map((message) => {
               const status = getMessageStatus(message);
               const waiting = !message.content && (status === "sending" || status === "streaming");
               return (
@@ -591,18 +663,26 @@ export default function ChatPage() {
                 </div>
               </div>
             );})}
+            {showNudge && <div className="guest-nudge">*{displayName} looks straight at you, waiting.* &ldquo;Answer me.&rdquo;</div>}
           </div>
-          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="Back to latest"><ScrollLatestIcon /></button>}
         </section>
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
+          {guestMode && (
+            <div className="guest-continue">
+              <button onClick={() => void sendGuestContinue()} disabled={sending || switchingModel}>Continue<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></button>
+            </div>
+          )}
           <div className="mobile-tool-row">
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
+            {guestMode
+              ? <span className="mobile-card-pill"><RoleIcon /><span className="mobile-card-pill-label">Free model</span></span>
+              : <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="Switch model"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="View pinned memories"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
-          <form className="mobile-composer" onSubmit={submit}>
-            <button type="button" className="mobile-inspire-btn" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
+          <form className={`mobile-composer${showNudge ? " composer-attention" : ""}`} onSubmit={submit}>
+            <button type="button" className="mobile-inspire-btn" aria-label="Get inspiration" onClick={useInspiration}><InspirationIcon /></button>
             <textarea
               ref={mobileTextareaRef}
               value={text}
@@ -622,19 +702,19 @@ export default function ChatPage() {
               className={`mobile-send${canStopGeneration ? " is-stopping" : ""}`}
               disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
               onClick={canStopGeneration ? stopGeneration : undefined}
-              aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+              aria-label={canStopGeneration ? "Stop generating" : "Send message"}
             >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
           </form>
         </section>
 
         {showMobileProfile && (
           <div className="mobile-sheet-backdrop" onClick={() => setShowMobileProfile(false)}>
-            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={`${displayName} 角色资料`}>
+            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={`${displayName} profile`}>
               <div className="mobile-sheet-handle" />
               <header className="mobile-profile-actions">
                 <button className="mobile-cid">CID: {character.id.replace("char_", "").slice(0, 5)}… <span>▣</span></button>
-                <button onClick={() => void shareCharacter()} aria-label="分享角色"><ShareIcon /></button>
-                <button onClick={() => setShowMobileProfile(false)} aria-label="关闭角色资料"><CloseIcon /></button>
+                <button onClick={() => void shareCharacter()} aria-label="Share character"><ShareIcon /></button>
+                <button onClick={() => setShowMobileProfile(false)} aria-label="Close profile"><CloseIcon /></button>
               </header>
               <div className="mobile-profile-scroll">
                 <section className="mobile-profile-hero">
@@ -677,11 +757,11 @@ export default function ChatPage() {
       <header className="tipsy-header chat-site-header">
         <div className="header-brand-group"><Brand /><Link className="community-link" href="/community"><CommunityIcon /><span>Community</span></Link></div>
         <div className="tipsy-header-right">
-          <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
-          <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
-          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
-          <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>
-          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
+          <button className="header-circle" aria-label="Search" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
+          <button className="header-circle" aria-label="Create" title="Create" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="Switch language" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
+          {mockAuthed && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`Coin balance ${balance}`}><span>✦</span><strong>{balance.toLocaleString("en-US")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
+          {user && mockAuthed ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="Account settings"><i>{(getUserName() ?? user.display_name).slice(0, 1).toUpperCase()}</i><span>{getUserName() ?? user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div> : <button className="feed-signin-button" onClick={() => setGuestGate({ reason: "header" })}>Sign in</button>}
         </div>
       </header>
 
@@ -690,7 +770,7 @@ export default function ChatPage() {
         <div className="history-list">{history.map((item) => {
           const active = item.id === conversation.id;
           const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
-          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={`打开与 ${item.character.display_name} 的聊天`}>
+          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={`Open chat with ${item.character.display_name}`}>
             <span className="history-avatar"><Image src={avatar} alt="" fill sizes="42px" /></span>
             <span className="history-copy"><strong>{item.character.display_name}</strong><small>{item.character.tagline}</small></span>
           </button>;
@@ -699,12 +779,12 @@ export default function ChatPage() {
 
       <div className={`reference-chat-workspace${showProfile ? "" : " profile-collapsed"}`}>
         {showProfile && (
-          <aside ref={roleProfileRef} className="role-profile" aria-label={`${displayName} 角色资料`}>
+          <aside ref={roleProfileRef} className="role-profile" aria-label={`${displayName} profile`}>
             <Image className="role-profile-cover" src={cover} alt={`${displayName} profile`} fill priority sizes="350px" />
             <div className="profile-image-shade" />
             <div className="profile-top-actions">
-              <button className="profile-icon-action" aria-label="分享角色" title="分享角色" onClick={() => void shareCharacter()}><ShareIcon /></button>
-              <button className="profile-icon-action" aria-label="收起角色资料" title="收起角色资料" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
+              <button className="profile-icon-action" aria-label="Share character" title="Share character" onClick={() => void shareCharacter()}><ShareIcon /></button>
+              <button className="profile-icon-action" aria-label="Collapse profile" title="Collapse profile" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
             </div>
 
             <div className="profile-hover-content">
@@ -730,11 +810,11 @@ export default function ChatPage() {
         <section className="reference-conversation">
           <header className="reference-conversation-toolbar">
             <div className="conversation-character-status">
-              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label="显示角色资料"><Image src={cover} alt={displayName} fill sizes="48px" /></button>
+              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label="Show profile"><Image src={cover} alt={displayName} fill sizes="48px" /></button>
               <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
+              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="Layout & settings"><MoreIcon /></button>
             </div>
             {showChatMenu && (
               <div className="chat-settings-popover">
@@ -761,7 +841,7 @@ export default function ChatPage() {
 
               <div className="reference-opening">{character.greeting}</div>
 
-              {messages.map((message) => {
+              {visibleMessages.map((message) => {
                 const status = getMessageStatus(message);
                 const waiting = !message.content && (status === "sending" || status === "streaming");
                 return (
@@ -775,8 +855,9 @@ export default function ChatPage() {
                   </div>
                 </div>
               );})}
+              {showNudge && <div className="guest-nudge">*{displayName} looks straight at you, waiting.* &ldquo;Answer me.&rdquo;</div>}
             </div>
-            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="Back to latest"><ScrollLatestIcon /></button>}
           </section>
 
           <section className="reference-composer-panel">
@@ -812,12 +893,19 @@ export default function ChatPage() {
                 <small>Pinned notes act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
               </div>
             )}
+            {guestMode && (
+              <div className="guest-continue">
+                <button onClick={() => void sendGuestContinue()} disabled={sending || switchingModel}>Continue<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></button>
+              </div>
+            )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              {guestMode
+                ? <span className="chat-card-pill"><RoleIcon /><span className="chat-card-pill-label">Free model</span></span>
+                : <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="Select model"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
-            <form className="reference-composer" onSubmit={submit}>
-              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
+            <form className={`reference-composer${showNudge ? " composer-attention" : ""}`} onSubmit={submit}>
+              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="Get inspiration" onClick={useInspiration}><InspirationIcon /></button>
               <textarea
                 ref={desktopTextareaRef}
                 value={text}
@@ -837,7 +925,7 @@ export default function ChatPage() {
                 className={`reference-send${canStopGeneration ? " is-stopping" : ""}`}
                 disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
                 onClick={canStopGeneration ? stopGeneration : undefined}
-                aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+                aria-label={canStopGeneration ? "Stop generating" : "Send message"}
               >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
             </form>
           </section>
@@ -855,6 +943,28 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+
+      {showWelcome && <WelcomeModal onDone={() => setShowWelcome(false)} />}
+
+      {guestGate && !showWelcome && (
+        <div className="gate-overlay" role="dialog" aria-modal="true" aria-label="Sign in to continue" onClick={() => { if (guestGate.reason === "header") setGuestGate(null); }}>
+          <div className="gate-stack" onClick={(event) => event.stopPropagation()}>
+            {guestGate.reason !== "header" && (
+              <div className="gate-teaser-row">
+                <span className="gate-teaser-avatar"><Image src={cover} alt="" fill sizes="34px" /></span>
+                <div className="gate-teaser">
+                  <p>{displayName} leans in, voice dropping to a whisper meant only for you. &ldquo;I was hoping you&rsquo;d say that. Because there&rsquo;s something I should have told you the moment you walked in&hellip;&rdquo;</p>
+                  <div className="gate-teaser-typing"><i /><i /><i /></div>
+                </div>
+              </div>
+            )}
+            <SignInCard heading={guestGate.reason === "header" ? "Sign in to Plum" : "Sign in to continue this story"} subheading="Fun, interactive characters to keep you company — sign in and pick up right where you left off." onSignedIn={afterGateSignIn} />
+            <button className="gate-dismiss" onClick={() => setGuestGate(null)}>Not now</button>
+          </div>
+        </div>
+      )}
+
+      {showReward && <SignInReward coins={SIGNIN_REWARD_COINS} onClaim={() => { clearPendingReward(); setShowReward(false); }} />}
     </main>
   );
 }

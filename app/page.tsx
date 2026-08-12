@@ -8,6 +8,8 @@ import { Brand } from "@/components/brand";
 import { ApiError, createConversation, getBootstrap, getFeed, logout, redeemAccessCode } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, FeedCharacter } from "@/lib/types";
+import { WelcomeModal, SignInCard, SignInReward } from "@/components/onboarding";
+import { SIGNIN_REWARD_COINS, clearPendingReward, getGuestProfile, getMockAuth, getUserName, hasPendingReward, mockSignOut, recordCharacterView, resetGuestState } from "@/lib/guest";
 
 const MAIN_TABS = ["For You", "Trending", "Latest", "Popular", "Following"] as const;
 const HOT_SEARCHES = ["Slow burn", "Enemies to lovers", "Fantasy", "Protective", "After hours"];
@@ -22,7 +24,7 @@ function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="tr
 function CommunityIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.3" /><path d="M3.5 19c.7-3.5 2.5-5.2 5.5-5.2s4.8 1.7 5.5 5.2M14.2 14.5c2.9-.7 5 .8 6.3 3.6" /></svg>; }
 
 function LoadingState() {
-  return <div className="feed-loading" aria-label="正在加载角色"><i /><span>Loading characters…</span></div>;
+  return <div className="feed-loading" aria-label="Loading characters"><i /><span>Loading characters…</span></div>;
 }
 
 function AccessDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void }) {
@@ -39,20 +41,20 @@ function AccessDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: Au
       const result = await redeemAccessCode(accessCode.trim(), displayName.trim());
       onAuthenticated(result.user);
     } catch (loginError) {
-      setError(loginError instanceof ApiError && loginError.message === "invalid_access_code" ? "邀请码无效或已过期，请联系测试负责人。" : "暂时无法登录，请稍后再试。");
+      setError(loginError instanceof ApiError && loginError.message === "invalid_access_code" ? "Invite code is invalid or expired. Please contact the test lead." : "Unable to sign in right now. Please try again later.");
     } finally { setSubmitting(false); }
   }
 
   return <div className="access-overlay" role="dialog" aria-modal="true" aria-labelledby="access-title" onClick={onClose}>
     <form className="access-card" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭登录"><CloseIcon /></button>
-      <Brand /><span className="access-kicker">PRIVATE BETA</span><h1 id="access-title">进入 Plum Chat</h1>
-      <p>登录后即可聊天、收藏角色并使用独立金币余额。</p>
-      <label><span>你的称呼</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="例如：Alice" /></label>
-      <label><span>邀请码</span><input value={accessCode} onChange={(event) => setAccessCode(event.target.value)} maxLength={160} autoComplete="one-time-code" placeholder="plum_…" /></label>
+      <button type="button" className="dialog-close" onClick={onClose} aria-label="Close sign in"><CloseIcon /></button>
+      <Brand /><span className="access-kicker">PRIVATE BETA</span><h1 id="access-title">Enter Plum Chat</h1>
+      <p>Sign in to chat, save characters, and use your own coin balance.</p>
+      <label><span>Your name</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="e.g. Alice" /></label>
+      <label><span>Invite code</span><input value={accessCode} onChange={(event) => setAccessCode(event.target.value)} maxLength={160} autoComplete="one-time-code" placeholder="plum_…" /></label>
       {error && <div className="access-error">{error}</div>}
-      <button className="access-submit" disabled={submitting || !displayName.trim() || !accessCode.trim()}>{submitting ? "正在进入…" : "进入 Plum Chat"}</button>
-      <small>邀请码只会绑定一个测试账号，请勿转发。</small>
+      <button className="access-submit" disabled={submitting || !displayName.trim() || !accessCode.trim()}>{submitting ? "Entering…" : "Enter Plum Chat"}</button>
+      <small>An invite code binds to a single test account — please don’t share it.</small>
     </form>
   </div>;
 }
@@ -78,6 +80,11 @@ export default function FeedPage() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  // Guest onboarding prototype: mock auth + first-visit welcome (client-only state)
+  const [mockAuthed, setMockAuthed] = useState(true); // assume signed-in until mount to avoid SSR flash
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [showReward, setShowReward] = useState(false);
 
   const availableTags = useMemo(() => Array.from(new Set(characters.flatMap((character) => character.tags))).slice(0, 12), [characters]);
   const visibleCharacters = useMemo(() => {
@@ -106,8 +113,8 @@ export default function FeedPage() {
     } catch (loadError) {
       setError(
         loadError instanceof ApiError && loadError.status === 503
-          ? "Plum Chat 暂时未开放，请稍后再来。"
-          : "暂时没能连接角色世界，请确认本地后端已经启动。",
+          ? "Plum Chat is not open yet. Please come back later."
+          : "Could not reach the character world. Please make sure the local backend is running.",
       );
     }
     finally { setLoading(false); }
@@ -116,12 +123,23 @@ export default function FeedPage() {
   useEffect(() => { void load(); }, []);
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
+    if (query.get("guest") === "reset") { resetGuestState(); window.history.replaceState(null, "", "/"); }
     if (query.get("login") === "1") setLoginOpen(true);
     if (query.get("search") === "1") setSearchOpen(true);
+    const authed = Boolean(getMockAuth());
+    setMockAuthed(authed);
+    if (!authed && !getGuestProfile()) setShowWelcome(true);
+    if (hasPendingReward()) setShowReward(true);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "plum_mock_auth") setMockAuthed(Boolean(getMockAuth()));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   async function enterCharacter(characterId: string) {
     if (openingId) return;
+    recordCharacterView(characterId); // browse-first taste signal (no UI)
     setOpeningId(characterId); setError(null);
     try {
       const result = await createConversation(characterId);
@@ -129,12 +147,13 @@ export default function FeedPage() {
     } catch (openError) {
       setOpeningId(null);
       if (openError instanceof ApiError && openError.status === 401) { setPendingTarget(characterId); setLoginOpen(true); return; }
-      setError("进入聊天失败了，请稍后再试。");
+      setError("Could not start the chat. Please try again later.");
     }
   }
 
   async function signOut() {
     try { await logout(); } catch { /* an expired session is already signed out */ }
+    mockSignOut(); setMockAuthed(false);
     setUser(null); setBalance(0); setAccountOpen(false);
   }
 
@@ -159,40 +178,40 @@ export default function FeedPage() {
     <header className="tipsy-header">
       <div className="header-brand-group"><Brand /><Link className="community-link" href="/community"><CommunityIcon /><span>Community</span></Link></div>
       <div className="tipsy-header-right">
-        <button className="header-circle" aria-label="搜索" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
-        <button className="header-circle" aria-label="创作" title="创作" onClick={openCreate}><CreateIcon /></button>
+        <button className="header-circle" aria-label="Search" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
+        <button className="header-circle" aria-label="Create" title="Create" onClick={openCreate}><CreateIcon /></button>
         <div className="header-menu-wrap">
-          <button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>
-          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>更多语言后续接入</small></div>}
+          <button className="header-circle language-symbol" aria-label="Switch language" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}
         </div>
-        {user && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>
-          {walletOpen && <div className="header-dropdown wallet-panel"><small>金币余额</small><strong>{balance.toLocaleString("zh-CN")}</strong><h3>消费记录</h3><p>暂无消费记录</p><button disabled>充值入口 · 后续开放</button></div>}
+        {user && mockAuthed && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`Coin balance ${balance}`}><span>✦</span><strong>{balance.toLocaleString("en-US")}</strong></button>
+          {walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}
         </div>}
-        {user ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}
-        </div> : <button className="header-circle" aria-label="登录" onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
+        {user && mockAuthed ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="Account settings"><i>{(getUserName() ?? user.display_name).slice(0, 1).toUpperCase()}</i><span>{getUserName() ?? user.display_name}</span><b>⌄</b></button>
+          {accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}
+        </div> : <button className="feed-signin-button" onClick={() => setSignInOpen(true)}>Sign in</button>}
       </div>
-      {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索角色、设定或标签" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="关闭搜索"><CloseIcon /></button><div><small>热门搜索</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
+      {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search characters, settings or tags" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="Close search"><CloseIcon /></button><div><small>Trending searches</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
     </header>
 
     <section className="feed-content">
       <div className="feed-controls">
-        <nav className="feed-tabs" aria-label="发现分类">{MAIN_TABS.map((label) => <button className={activeTab === label ? "active" : ""} key={label} onClick={() => setActiveTab(label)}>{label}</button>)}</nav>
+        <nav className="feed-tabs" aria-label="Discover categories">{MAIN_TABS.map((label) => <button className={activeTab === label ? "active" : ""} key={label} onClick={() => setActiveTab(label)}>{label}</button>)}</nav>
         <div className="feed-filters">
           <button className={`limitless-switch${limitless ? " active" : ""}`} aria-pressed={limitless} onClick={() => setLimitless((value) => !value)}><span>Limitless</span><i /></button>
           <div className="gender-menu-wrap">
-            <button className="gender-filter" aria-label="角色性别" aria-expanded={genderOpen} onClick={() => setGenderOpen((value) => !value)}><span>{gender}</span><i>⌄</i></button>
+            <button className="gender-filter" aria-label="Character gender" aria-expanded={genderOpen} onClick={() => setGenderOpen((value) => !value)}><span>{gender}</span><i>⌄</i></button>
             {genderOpen && <div className="gender-menu">{["All", "Female", "Male", "Other"].map((option) => <button className={gender === option ? "selected" : ""} key={option} onClick={() => { setGender(option); setGenderOpen(false); }}><span>{option}</span>{gender === option && <i>✓</i>}</button>)}</div>}
           </div>
           <div className="tag-filter-wrap">
-            <button className={`filter-button${selectedTags.length ? " active" : ""}`} aria-label="筛选标签" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><FilterIcon /></button>
-            {filtersOpen && <div className="tag-filter-panel"><header><strong>筛选标签</strong><button onClick={() => setFiltersOpen(false)} aria-label="关闭标签筛选"><CloseIcon /></button></header><div>{availableTags.map((tag) => <button className={selectedTags.includes(tag) ? "active" : ""} key={tag} onClick={() => setSelectedTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag])}>{tag}</button>)}</div><small>标签生产流程将在后续版本接入。</small></div>}
+            <button className={`filter-button${selectedTags.length ? " active" : ""}`} aria-label="Filter tags" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><FilterIcon /></button>
+            {filtersOpen && <div className="tag-filter-panel"><header><strong>Filter tags</strong><button onClick={() => setFiltersOpen(false)} aria-label="Close tag filter"><CloseIcon /></button></header><div>{availableTags.map((tag) => <button className={selectedTags.includes(tag) ? "active" : ""} key={tag} onClick={() => setSelectedTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag])}>{tag}</button>)}</div><small>Tag curation ships in a later version.</small></div>}
           </div>
         </div>
       </div>
-      {error && <div className="error-banner"><span>{error}</span><button onClick={() => void load()}>重新加载</button></div>}
-      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>没有找到符合条件的角色</strong><button onClick={clearFilters}>清除筛选</button></div> : <div className="tipsy-grid">{visibleCharacters.map((character, index) => <article className="tipsy-card" key={character.id}>
-        <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`和 ${character.display_name} 开始聊天`}>
+      {error && <div className="error-banner"><span>{error}</span><button onClick={() => void load()}>Reload</button></div>}
+      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>No characters match your filters</strong><button onClick={clearFilters}>Clear filters</button></div> : <div className="tipsy-grid">{visibleCharacters.map((character, index) => <article className="tipsy-card" key={character.id}>
+        <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`Chat with ${character.display_name}`}>
           <Image className="tipsy-card-cover" src={character.cover_ref ?? "/characters/kai.svg"} alt={character.display_name} fill priority={index < 6} sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" />
           <span className="card-darken" />
           {openingId === character.id && <span className="opening-card">Entering story…</span>}
@@ -203,5 +222,14 @@ export default function FeedPage() {
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
     {loginOpen && <AccessDialog onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
+    {showWelcome && <WelcomeModal onDone={() => setShowWelcome(false)} />}
+    {signInOpen && !showWelcome && (
+      <div className="signin-overlay" role="dialog" aria-modal="true" onClick={() => setSignInOpen(false)}>
+        <div onClick={(event) => event.stopPropagation()}>
+          <SignInCard heading="Sign in to Plum" subheading="Fun, interactive characters to keep you company — save your stories, favorites and coins across devices." onSignedIn={() => { setSignInOpen(false); setMockAuthed(true); if (hasPendingReward()) setShowReward(true); }} />
+        </div>
+      </div>
+    )}
+    {showReward && <SignInReward coins={SIGNIN_REWARD_COINS} onClaim={() => { clearPendingReward(); setShowReward(false); }} />}
   </main>;
 }

@@ -462,3 +462,77 @@ svg { display: block; }
   .reference-chat-shell .modal-backdrop { z-index: 80; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; scroll-behavior:auto!important; } }
+
+/* ===== Guest onboarding prototype (Welcome modal, sign-in, continue, gate) ===== */
+.welcome-overlay, .signin-overlay { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(8,8,10,.66); backdrop-filter: blur(10px); }
+.welcome-card { width: min(420px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 22px 24px 20px; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; color: #fff; background: rgba(24,24,27,.97); box-shadow: 0 30px 90px rgba(0,0,0,.5); }
+.welcome-card h1 { margin: 0 0 5px; font-size: 19px; }
+.welcome-card h1 em { margin-right: 5px; font-style: italic; font-weight: 800; }
+.welcome-sub { margin: 0 0 14px; color: rgba(255,255,255,.6); font-size: 10.5px; line-height: 1.5; }
+.welcome-field { display: block; margin-bottom: 13px; }
+.welcome-field > span { display: block; margin-bottom: 8px; color: rgba(255,255,255,.9); font-size: 11.5px; font-weight: 700; }
+.welcome-field > span i { color: rgba(255,255,255,.65); font-size: 9px; font-style: normal; vertical-align: top; }
+.pronoun-row { display: flex; justify-content: space-around; }
+.pronoun-option { display: grid; justify-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
+.pronoun-circle { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; background: rgba(255,255,255,.06); font-size: 19px; line-height: 1; transition: border-color .15s ease, background .15s ease; }
+.pronoun-option:hover .pronoun-circle { background: rgba(255,255,255,.1); }
+.pronoun-option.active .pronoun-circle { border-color: #fff; background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px #fff inset; }
+.pronoun-option b { font-size: 10.5px; font-weight: 700; }
+.welcome-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.welcome-grid button { height: 32px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; color: rgba(255,255,255,.85); background: rgba(255,255,255,.05); cursor: pointer; font-size: 11px; font-weight: 600; transition: background .15s ease, border-color .15s ease; }
+.welcome-grid button:hover { background: rgba(255,255,255,.09); }
+.welcome-grid button.active { border-color: #fff; color: #fff; background: rgba(255,255,255,.12); }
+.welcome-enter { width: min(240px, 100%); height: 40px; display: block; margin: 16px auto 0; border: 0; border-radius: 999px; color: #17171a; background: #fff; font-size: 12.5px; font-weight: 800; cursor: pointer; transition: opacity .15s ease, background .15s ease; }
+.welcome-enter:hover:not(:disabled) { background: #ececec; }
+.welcome-enter:disabled { opacity: .35; cursor: not-allowed; }
+
+.signin-card { width: min(360px, 100%); padding: 24px 24px 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px; color: #fff; background: rgba(26,26,30,.97); box-shadow: 0 30px 90px rgba(0,0,0,.5); text-align: center; }
+.signin-card h2 { margin: 0 0 6px; font-size: 17px; }
+.signin-card > p { margin: 0 0 16px; color: rgba(255,255,255,.55); font-size: 11.5px; line-height: 1.5; }
+.signin-google { width: 100%; height: 44px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 0; border-radius: 12px; color: #1f1f1f; background: #fff; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.signin-google svg { width: 18px; height: 18px; }
+.signin-google:hover { background: #f2f2f2; }
+.signin-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.signin-secondary button { height: 40px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; color: rgba(255,255,255,.85); background: rgba(255,255,255,.05); font-size: 12px; font-weight: 600; cursor: pointer; }
+.signin-secondary button:hover { background: rgba(255,255,255,.09); }
+.signin-secondary svg { width: 16px; height: 16px; }
+.signin-card small { display: block; margin-top: 14px; color: rgba(255,255,255,.38); font-size: 9.5px; line-height: 1.5; }
+
+.feed-signin-button { height: 36px; padding: 0 16px; border: 0; border-radius: 999px; color: #1f1f1f; background: #fff; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.feed-signin-button:hover { background: #ececec; }
+
+.guest-continue { display: flex; justify-content: center; margin: 4px 0 2px; }
+.guest-continue button { height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 0 18px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; color: #fff; background: rgba(255,255,255,.08); backdrop-filter: blur(12px); font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s ease; }
+.guest-continue button:hover:not(:disabled) { background: rgba(255,255,255,.14); }
+.guest-continue button:disabled { opacity: .4; cursor: not-allowed; }
+.guest-continue svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.guest-nudge { margin: 10px 0; padding: 10px 12px; border: 1px solid rgba(202,178,255,.35); border-radius: 3px 12px 12px 12px; color: #e9ddff; background: rgba(122,84,200,.16); font-size: 10px; font-style: italic; line-height: 1.6; animation: messageIn .25s ease both; }
+.composer-attention { animation: composerPulse 1.6s ease 2; }
+@keyframes composerPulse { 0%,100% { box-shadow: 0 6px 20px rgba(0,0,0,.28); } 50% { box-shadow: 0 0 0 3px rgba(168,121,255,.35), 0 6px 20px rgba(0,0,0,.28); } }
+
+.gate-overlay { position: fixed; z-index: 110; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(8,8,10,.7); backdrop-filter: blur(12px); }
+.gate-stack { width: min(400px, 100%); display: grid; gap: 12px; }
+.gate-teaser-row { display: flex; align-items: flex-start; gap: 9px; }
+.gate-teaser-avatar { position: relative; width: 34px; height: 34px; flex: 0 0 auto; overflow: hidden; border: 1px solid rgba(255,255,255,.25); border-radius: 50%; }
+.gate-teaser-avatar img { object-fit: cover; }
+.gate-teaser { position: relative; flex: 1; min-width: 0; padding: 12px 14px 22px; border: 1px solid rgba(255,255,255,.12); border-radius: 3px 14px 14px 14px; background: rgba(38,36,41,.95); overflow: hidden; }
+.gate-teaser p { margin: 0; color: rgba(255,255,255,.98); filter: blur(4.5px); user-select: none; font-size: 12px; line-height: 1.7; }
+.gate-teaser::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, rgba(38,36,41,.72)); }
+.gate-teaser-typing { position: absolute; z-index: 1; left: 14px; bottom: 9px; display: flex; gap: 4px; }
+.gate-teaser-typing i { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.85); animation: bounce 1.1s infinite; }
+.gate-teaser-typing i:nth-child(2) { animation-delay: .14s; } .gate-teaser-typing i:nth-child(3) { animation-delay: .28s; }
+.gate-stack .signin-card { width: 100%; }
+.gate-dismiss { justify-self: center; padding: 6px 14px; border: 0; border-radius: 999px; color: rgba(255,255,255,.55); background: transparent; cursor: pointer; font-size: 11.5px; transition: color .15s ease; }
+.gate-dismiss:hover { color: rgba(255,255,255,.85); }
+
+/* ===== First-login reward modal ===== */
+.reward-overlay { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(8,8,10,.72); backdrop-filter: blur(12px); }
+.reward-card { width: min(340px, 100%); padding: 28px 26px 22px; border: 1px solid rgba(255,255,255,.12); border-radius: 20px; color: #fff; background: rgba(24,24,27,.98); box-shadow: 0 30px 90px rgba(0,0,0,.5); text-align: center; animation: rewardPop .3s cubic-bezier(.2,.8,.3,1.2) both; }
+@keyframes rewardPop { from { opacity: 0; transform: scale(.9); } }
+.reward-coin { width: 60px; height: 60px; margin: 0 auto 14px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(135deg, #f6c750, #e39a2b); color: #3a2400; font-size: 30px; font-weight: 800; box-shadow: 0 8px 24px rgba(227,154,43,.45); }
+.reward-card h2 { margin: 0 0 6px; font-size: 20px; }
+.reward-card p { margin: 0 0 16px; color: rgba(255,255,255,.6); font-size: 12px; line-height: 1.55; }
+.reward-amount { margin: 0 auto 18px; font-size: 26px; font-weight: 800; color: #f6c750; }
+.reward-claim { width: 100%; height: 46px; border: 0; border-radius: 999px; color: #17171a; background: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: background .15s ease; }
+.reward-claim:hover { background: #ececec; }
