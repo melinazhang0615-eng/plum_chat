@@ -7,8 +7,8 @@
 3. 本地调试先将账号加入 Test users，保持应用处于 Testing 状态。
 4. 创建 OAuth Client ID，并添加与服务端逐字符一致的 Authorized redirect URI：
 
-   - 本地：`http://localhost:3000/api/v1/products/plum/auth/oauth/google/callback`
-   - 生产：使用实际 Plum HTTPS 域名的同一路径。
+   - 本地：`http://localhost:3000/auth/google/callback`
+   - 生产：使用实际 Plum HTTPS 域名的 `/auth/google/callback` 路径。
 
 ## 服务端环境变量
 
@@ -16,7 +16,7 @@
 PLUM_GOOGLE_AUTH_ENABLED=true
 PLUM_GOOGLE_CLIENT_ID=...
 PLUM_GOOGLE_CLIENT_SECRET=...
-PLUM_GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/products/plum/auth/oauth/google/callback
+PLUM_GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
 PLUM_OAUTH_STATE_PEPPER=<至少32字节随机值>
 ```
 

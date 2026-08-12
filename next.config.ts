@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
         source: "/api/v1/products/plum/:path*",
         destination: `${apiOrigin}/api/v1/products/plum/:path*`,
       },
+      {
+        source: "/auth/google/callback",
+        destination: `${apiOrigin}/api/v1/products/plum/auth/oauth/google/callback`,
+      },
     ];
   },
 };
