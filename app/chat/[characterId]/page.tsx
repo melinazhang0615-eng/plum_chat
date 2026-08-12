@@ -10,10 +10,10 @@ import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, MessageStatus, ModelProfile } from "@/lib/types";
 
 function formatTime(value?: string) {
-  if (!value) return "刚刚";
+  if (!value) return "Just now";
   const normalized = value.includes("T") ? value : value.replace(" ", "T") + "+08:00";
   const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function SearchIcon() {
@@ -22,6 +22,9 @@ function SearchIcon() {
 function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>; }
 function CommunityIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3" /><circle cx="17" cy="10" r="2.3" /><path d="M3.5 19c.7-3.5 2.5-5.2 5.5-5.2s4.8 1.7 5.5 5.2M14.2 14.5c2.9-.7 5 .8 6.3 3.6" /></svg>; }
 function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
+const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
+const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
+
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
 }
@@ -91,7 +94,7 @@ function CollapseProfileIcon() {
 function CollectionsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5h10.5A2.5 2.5 0 0 1 20 8v10.5H9.5A2.5 2.5 0 0 1 7 16V5.5Z" /><path d="M7 8H5.5A2.5 2.5 0 0 0 3 10.5V19a2 2 0 0 0 2 2h10.5a2.5 2.5 0 0 0 2.5-2.5" /><path className="collection-spark" d="m13.2 7.1 1.05 2.55 2.55 1.05-2.55 1.05-1.05 2.55-1.05-2.55L9.6 10.7l2.55-1.05 1.05-2.55Z" /><path className="collection-spark" d="m17.4 5 .38.92.92.38-.92.38-.38.92-.38-.92-.92-.38.92-.38.38-.92Z" /></svg>; }
 
 function ChatLoading() {
-  return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>正在走进角色的世界…</p></main>;
+  return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>Stepping into the character&apos;s world…</p></main>;
 }
 
 function getMessageStatus(message: ChatMessage): MessageStatus {
@@ -450,7 +453,7 @@ export default function ChatPage() {
 
   if (loading) return <ChatLoading />;
   if (!conversation || !experience) {
-    return <main className="fatal-state"><h1>没有找到这段对话</h1><p>{error}</p><button onClick={() => router.push("/")}>返回角色列表</button></main>;
+    return <main className="fatal-state"><h1>Conversation not found</h1><p>{error}</p><button onClick={() => router.push("/")}>Back to characters</button></main>;
   }
 
   const character = conversation.character;
@@ -555,6 +558,7 @@ export default function ChatPage() {
             <b>{displayName}</b>
             {primaryBadge && <i title={primaryBadge.display_name}>✦</i>}
           </button>
+          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
         </header>
 
         <section
@@ -582,7 +586,7 @@ export default function ChatPage() {
                 <div className="mobile-message-stack">
                   {waiting
                     ? <div className="typing"><i /><i /><i /></div>
-                    : <div className="mobile-bubble">{message.content || (status === "cancelled" ? "回复已停止" : "回复生成失败")}</div>}
+                    : <div className="mobile-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
                   <small>{messageStatusText(message)}</small>
                 </div>
               </div>
@@ -593,21 +597,12 @@ export default function ChatPage() {
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-          <div className="mobile-story-actions">
-            <button disabled={sending} onClick={() => setShowRestart(true)}><RestartIcon /><span>Restart</span></button>
-            <button onClick={useInspiration}><InspirationIcon /><span>Inspire</span></button>
-            <button onClick={() => void shareCharacter()}><ShareIcon /><span>Share</span></button>
-            <button disabled><SceneImageIcon /><span>Image</span></button>
-            <button disabled><SceneVideoIcon /><span>Video</span></button>
-          </div>
           <div className="mobile-tool-row">
-            <button className="mobile-role-chip" onClick={() => setMobileSheet("role")}><RoleIcon />Role Card</button>
-            <span />
-            <button onClick={() => setMobileSheet("model")} aria-label="切换模型"><ModelIcon /></button>
-            <button onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><NoteIcon /></button>
-            <button onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
+            <button type="button" className="mobile-inspire-btn" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
             <textarea
               ref={mobileTextareaRef}
               value={text}
@@ -622,10 +617,9 @@ export default function ChatPage() {
               rows={1}
               disabled={restarting || switchingModel}
             />
-            <span>{selectedModel?.coin_cost ?? 0} ✦</span>
             <button
               type={canStopGeneration ? "button" : "submit"}
-              className={canStopGeneration ? "is-stopping" : ""}
+              className={`mobile-send${canStopGeneration ? " is-stopping" : ""}`}
               disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
               onClick={canStopGeneration ? stopGeneration : undefined}
               aria-label={canStopGeneration ? "停止生成" : "发送消息"}
@@ -670,11 +664,11 @@ export default function ChatPage() {
               <div className="mobile-sheet-handle" />
               <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
               {mobileSheet === "model" && <div className="mobile-model-list">{models.map((model) => (
-                <button key={model.profile} className={model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => { void selectModel(model.profile); setMobileSheet(null); }}><span><b>{model.display_name}</b><small>{model.coin_cost} coins / message</small></span><i>{model.profile === conversation.model_profile ? "✓" : ""}</i></button>
+                <button key={model.profile} className={model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => { void selectModel(model.profile); setMobileSheet(null); }}><span><b>{modelName(model)}</b><small>{model.coin_cost} coins / message</small></span><i>{model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
               {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
-              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
+              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
             </section>
           </div>
         )}
@@ -685,9 +679,9 @@ export default function ChatPage() {
         <div className="tipsy-header-right">
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
           <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
-          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>更多语言后续接入</small></div>}</div>
-          <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>金币余额</small><strong>{balance.toLocaleString("zh-CN")}</strong><h3>消费记录</h3><p>暂无消费记录</p><button disabled>充值入口 · 后续开放</button></div>}</div>
-          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}</div>}
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
+          <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>
+          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
         </div>
       </header>
 
@@ -744,8 +738,8 @@ export default function ChatPage() {
             </div>
             {showChatMenu && (
               <div className="chat-settings-popover">
-                <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>恢复默认布局</b><small>显示角色资料与标准聊天宽度</small></div></button>
-                <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>重新开始对话</b><small>归档当前记录并开启新会话</small></div></button>
+                <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>Reset layout</b><small>Show profile and standard chat width</small></div></button>
+                <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>Restart conversation</b><small>Archive this chat and start fresh</small></div></button>
               </div>
             )}
           </header>
@@ -776,7 +770,7 @@ export default function ChatPage() {
                   <div className="reference-message-stack">
                     {waiting
                       ? <div className="typing"><i /><i /><i /></div>
-                      : <div className="reference-bubble">{message.content || (status === "cancelled" ? "回复已停止" : "回复生成失败")}</div>}
+                      : <div className="reference-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
                     <small>{messageStatusText(message)}</small>
                   </div>
                 </div>
@@ -789,7 +783,7 @@ export default function ChatPage() {
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
-                <header><b>Story model</b><small>选择本轮对话使用的模型</small></header>
+                <header><b>Story model</b><small>Choose the model for this conversation</small></header>
                 {models.map((model) => (
                   <button
                     key={model.profile}
@@ -797,7 +791,7 @@ export default function ChatPage() {
                     disabled={sending || switchingModel}
                     onClick={() => { void selectModel(model.profile); setComposerPanel(null); }}
                   >
-                    <span><b>{model.display_name}</b><small>{model.coin_cost} coins / message</small></span>
+                    <span><b>{modelName(model)}</b><small>{model.coin_cost} coins / message</small></span>
                     <i>{model.profile === conversation.model_profile ? "✓" : ""}</i>
                   </button>
                 ))}
@@ -807,7 +801,7 @@ export default function ChatPage() {
               <div className="composer-popover info-popover">
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 {conversationTools.role_card ? (
-                  <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} 首版使用默认测试身份，后续接入可编辑角色卡。</small></>
+                  <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} Using a default test identity for now; editable role cards coming soon.</small></>
                 ) : <p className="empty-pin"><RoleIcon /><strong>No role card selected</strong></p>}
               </div>
             )}
@@ -815,11 +809,11 @@ export default function ChatPage() {
               <div className="composer-popover info-popover">
                 <header><b>Pinned</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 {conversationTools.pins.length === 0 ? <p className="empty-pin"><NoteIcon /><strong>No pinned memories</strong></p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}
-                <small>置顶内容会作为长期事实参与后续对话。首版 fallback 不写入模型上下文。</small>
+                <small>Pinned notes act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${selectedModel.display_name} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{selectedModel?.display_name ?? "Model"}</span></button>
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
@@ -855,9 +849,9 @@ export default function ChatPage() {
       {showRestart && (
         <div className="modal-backdrop" onClick={() => setShowRestart(false)}>
           <div className="restart-modal" onClick={(event) => event.stopPropagation()}>
-            <span className="modal-icon">↺</span><h2>重新开始这段关系？</h2>
-            <p>当前聊天记录会被归档，新对话将从角色的开场白重新开始。</p>
-            <div><button className="secondary" onClick={() => setShowRestart(false)}>取消</button><button className="danger" disabled={sending} onClick={() => void confirmRestart()}>重新开始</button></div>
+            <span className="modal-icon">↺</span><h2>Restart this relationship?</h2>
+            <p>The current chat will be archived and a new conversation will start from the character&apos;s greeting.</p>
+            <div><button className="secondary" onClick={() => setShowRestart(false)}>Cancel</button><button className="danger" disabled={sending} onClick={() => void confirmRestart()}>Restart</button></div>
           </div>
         </div>
       )}
