@@ -88,10 +88,10 @@ function FeedContent() {
     if (query.get("search") === "1") setSearchOpen(true);
   }, []);
 
-  async function enterCharacter(characterId: string) {
+  async function enterCharacter(characterId: string, skipAuth = false) {
     if (openingId) return;
     if (authLoading) return;
-    if (!context || context.actor.kind === "visitor" || (context.actor.kind === "guest" && !context.actor.profile_complete)) {
+    if (!skipAuth && (!context || context.actor.kind === "visitor" || (context.actor.kind === "guest" && !context.actor.profile_complete))) {
       setPendingTarget(characterId); setWelcomeOpen(true); return;
     }
     setOpeningId(characterId); setError(null);
@@ -171,7 +171,7 @@ function FeedContent() {
       </article>)}</div>}
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
-    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target === "create") setLoginOpen(true); else if (target) void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
+    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target === "create") setLoginOpen(true); else if (target) void enterCharacter(target, true); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
     {loginOpen && <EmailSignInDialog onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
   </main>;
 }
