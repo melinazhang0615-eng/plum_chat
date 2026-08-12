@@ -80,10 +80,10 @@ PLUM_DEV_MODE=false PLUM_CHAT_STREAMING_ENABLED=true \
 
 ### Discord 社区入口
 
-在前端构建环境配置：
+仓库内置当前邀请链接，拉取代码即可使用。更换邀请链接时可在前端构建环境覆盖：
 
 ```dotenv
 NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/your-invite-code
 ```
 
-配置后，首页、聊天页和 Create 页的 Community 按钮会在新标签直接打开 Discord；未配置时按钮不可点击。
+首页、聊天页和 Create 页的 Community 按钮会在新标签直接打开 Discord。
