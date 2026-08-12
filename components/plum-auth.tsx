@@ -99,7 +99,7 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: () => void;
 }
 
 export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void }) {
-  const { ensureGuest, refresh } = usePlumAuth();
+  const { ensureGuest, refresh, context } = usePlumAuth();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
@@ -116,6 +116,15 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
       const result = await requestEmailChallenge(email.trim());
       setChallengeId(result.challenge_id);
     } catch (err) { setError(apiMessage(err)); } finally { setSubmitting(false); }
+  }
+
+  async function continueWithGoogle() {
+    if (submitting) return;
+    setSubmitting(true); setError(null);
+    try {
+      await ensureGuest();
+      window.location.assign(`/api/v1/products/plum/auth/oauth/google/start?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    } catch (err) { setError(apiMessage(err)); setSubmitting(false); }
   }
 
   async function verifyCode(event: FormEvent) {
@@ -137,6 +146,7 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
       {!challengeId && <><label><span>邮箱</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@example.com" required /></label><label><span>称呼（首次注册可选）</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="例如：Alice" /></label></>}
       {challengeId && <label><span>6 位验证码</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" autoFocus /></label>}
       {error && <div className="access-error">{error}</div>}
+      {!challengeId && context?.capabilities.google_auth && <button type="button" className="text-action" onClick={() => void continueWithGoogle()} disabled={submitting}>Continue with Google</button>}
       <button className="access-submit" disabled={submitting || (!challengeId ? !email.trim() : code.length !== 6)}>{submitting ? "请稍候…" : challengeId ? "确认登录" : "发送验证码"}</button>
       {challengeId && <button type="button" className="text-action" onClick={() => { setChallengeId(null); setCode(""); }}>换一个邮箱</button>}
     </form>

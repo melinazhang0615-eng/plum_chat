@@ -25,6 +25,8 @@ export type GuestQuota = {
 export type PlumCapabilities = {
   guest_chat: boolean;
   email_auth: boolean;
+  google_auth: boolean;
+  apple_auth?: boolean;
   chat_streaming: boolean;
 };
 

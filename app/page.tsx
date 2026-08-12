@@ -177,5 +177,6 @@ function FeedContent() {
 }
 
 export default function FeedPage() {
+  // OAuth callback returns to the feed; refresh the server-owned auth context.
   return <PlumAuthProvider><FeedContent /></PlumAuthProvider>;
 }
