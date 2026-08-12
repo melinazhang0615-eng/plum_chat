@@ -18,7 +18,7 @@ export class StreamProtocolError extends Error {
 type StreamBase = { version: 1; turn_id: string };
 
 export type TurnStreamEvent =
-  | ({ type: "turn.accepted"; request_id: string; model_profile: ModelProfile["profile"]; reserved_coins: number; deduplicated?: boolean } & StreamBase)
+  | ({ type: "turn.accepted"; request_id: string; model_profile: ModelProfile["profile"]; reserved_coins: number; guest_quota?: GuestQuota; deduplicated?: boolean } & StreamBase)
   | ({ type: "message.delta"; seq: number; text: string } & StreamBase)
   | ({ type: "turn.completed"; message_id: string | null; finish_reason: string; charged_coins: number; wallet: Wallet | null; guest_quota?: GuestQuota; deduplicated: boolean } & StreamBase)
   | ({ type: "turn.cancelled"; message_id: string | null; charged_coins: number; wallet: Wallet | null; guest_quota?: GuestQuota } & StreamBase)

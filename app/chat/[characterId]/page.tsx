@@ -5,9 +5,10 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
-import { ApiError, cancelTurn, createConversation, getBootstrap, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { EmailSignInDialog, PlumAuthProvider, usePlumAuth } from "@/components/plum-auth";
+import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
-import type { AuthUser, CharacterExperience, ChatMessage, Conversation, MessageStatus, ModelProfile } from "@/lib/types";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
 function formatTime(value?: string) {
   if (!value) return "Just now";
@@ -112,11 +113,12 @@ function messageStatusText(message: ChatMessage) {
   return formatTime(message.created_at);
 }
 
-export default function ChatPage() {
+function ChatContent() {
   const params = useParams<{ characterId: string }>();
   const search = useSearchParams();
   const requestedConversationId = search.get("conversation");
   const router = useRouter();
+  const { refresh } = usePlumAuth();
   const desktopMessageStageRef = useRef<HTMLElement>(null);
   const mobileMessageStageRef = useRef<HTMLElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -134,6 +136,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [balance, setBalance] = useState(0);
+  const [guestQuota, setGuestQuota] = useState<GuestQuota | null>(null);
+  const [guest, setGuest] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -176,24 +181,26 @@ export default function ChatPage() {
         conversationId = created.conversation.id;
         router.replace(`/chat/${params.characterId}?conversation=${conversationId}`);
       }
-      const [detail, bootstrap, conversationHistory] = await Promise.all([
+      const [detail, auth, conversationHistory] = await Promise.all([
         getConversation(conversationId),
-        getBootstrap(),
+        getAuthContext(),
         getConversationHistory(),
       ]);
       setConversation(detail.conversation);
       setMessages(detail.messages);
       setModels(detail.models);
       setBalance(detail.wallet?.balance ?? 0);
-      setUser(bootstrap.user);
+      setGuest(auth.actor.kind === "guest");
+      setGuestQuota(detail.guest_quota ?? auth.guest_quota);
+      setUser(auth.actor.kind === "member" ? auth.actor.user : null);
       setHistory(conversationHistory.items);
       setExperience(detail.experience);
-      setChatStreamingEnabled(bootstrap?.capabilities?.chat_streaming === true);
+      setChatStreamingEnabled(auth.capabilities.chat_streaming === true);
       setLiked(null);
       setFavorited(null);
     } catch (loadError) {
       if (loadError instanceof ApiError && loadError.status === 401) {
-        router.replace("/?login=1");
+        router.replace("/");
         return;
       }
       setError("聊天暂时加载失败，请返回后重试。");
@@ -289,7 +296,7 @@ export default function ChatPage() {
       [700, 1800].forEach((delay) => {
         const timer = window.setTimeout(() => {
           void getConversation(conversationId)
-            .then((detail) => setBalance(detail.wallet?.balance ?? 0))
+            .then((detail) => { setBalance(detail.wallet?.balance ?? 0); setGuestQuota(detail.guest_quota ?? null); })
             .catch(() => undefined);
         }, delay);
         reconciliationTimersRef.current.push(timer);
@@ -329,8 +336,8 @@ export default function ChatPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const content = text.trim();
-    if (!conversation || !content || sending || switchingModel || !selectedModel) return;
-    if (balance < selectedModel.coin_cost) {
+    if (!conversation || !content || sending || switchingModel || (!guest && !selectedModel)) return;
+    if (!guest && selectedModel && balance < selectedModel.coin_cost) {
       setError("金币余额不足，暂时无法发送这条消息。");
       return;
     }
@@ -355,6 +362,7 @@ export default function ChatPage() {
           conversationId: conversation.id,
           text: content,
           requestId,
+          guest,
           signal: controller.signal,
           onEvent: (streamEvent) => {
             if (activeTurnRef.current?.requestId !== requestId || activeTurnRef.current.cancelled) return;
@@ -364,12 +372,14 @@ export default function ChatPage() {
               setMessages((current) => current.map((item) => item.id === requestId
                 ? { ...item, status: "completed" }
                 : item.id === assistantId ? { ...item, status: "streaming" } : item));
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
             } else if (streamEvent.type === "message.delta") {
               setGenerationState("streaming");
               appendAssistantDelta(assistantId, streamEvent.text);
             } else if (streamEvent.type === "turn.completed") {
               flushAssistantBuffer(assistantId);
               setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
               setMessages((current) => current.map((item) => item.id === assistantId ? {
                 ...item,
                 id: streamEvent.message_id ?? item.id,
@@ -379,6 +389,7 @@ export default function ChatPage() {
             } else if (streamEvent.type === "turn.cancelled") {
               flushAssistantBuffer(assistantId);
               setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
               setMessages((current) => current.map((item) => item.id === assistantId ? {
                 ...item,
                 id: streamEvent.message_id ?? item.id,
@@ -388,6 +399,7 @@ export default function ChatPage() {
             } else if (streamEvent.type === "turn.failed") {
               flushAssistantBuffer(assistantId);
               setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
               setMessages((current) => current.map((item) => item.id === assistantId
                 ? { ...item, status: "failed" }
                 : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
@@ -397,7 +409,7 @@ export default function ChatPage() {
           },
         });
       } else {
-        const result = await sendTurn(conversation.id, content, requestId);
+        const result = await sendTurn(conversation.id, content, requestId, guest);
         setMessages((current) => current.map((item) => item.id === requestId
           ? { ...item, status: "completed" }
           : item.id === assistantId ? {
@@ -408,6 +420,7 @@ export default function ChatPage() {
             status: "completed",
           } : item));
         setBalance(result.wallet?.balance ?? 0);
+        if (result.guest_quota) setGuestQuota(result.guest_quota);
       }
     } catch (sendError) {
       if (controller.signal.aborted) return;
@@ -415,6 +428,11 @@ export default function ChatPage() {
       setMessages((current) => current.map((item) => item.id === assistantId
         ? { ...item, status: "failed" }
         : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
+      if (sendError instanceof ApiError && sendError.message === "guest_sign_in_required") {
+        setSignInOpen(true);
+        setError("免费体验次数已用完，登录后可继续并保存故事进度。");
+        return;
+      }
       if (redirectIfUnauthorized(sendError)) return;
       setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息或回复中断，请再试一次。");
       setText((current) => current || content);
@@ -427,7 +445,7 @@ export default function ChatPage() {
   }
 
   async function confirmRestart() {
-    if (!conversation || sending || switchingModel) return;
+    if (!conversation || guest || sending || switchingModel) return;
     setRestarting(true);
     try {
       const result = await restartConversation(conversation.id);
@@ -447,7 +465,7 @@ export default function ChatPage() {
 
   async function signOut() {
     try { await logout(); } catch { /* an expired session is already signed out */ }
-    router.replace("/?login=1");
+    router.replace("/");
   }
 
   if (loading) return <ChatLoading />;
@@ -466,6 +484,7 @@ export default function ChatPage() {
   const visibleLikeCount = viewerState.like_count + Number(viewerHasLiked) - Number(viewerState.has_liked);
   const visibleFavoriteCount = viewerState.favorite_count + Number(viewerHasFavorited) - Number(viewerState.is_favorite);
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
+  const guestQuotaLabel = guestQuota ? `免费体验：还可发送 ${guestQuota.remaining_turns} 条` : "免费体验聊天";
 
   function scrollToLatest() {
     nearBottomRef.current = { desktop: true, mobile: true };
@@ -492,6 +511,7 @@ export default function ChatPage() {
   }
 
   async function toggleLike() {
+    if (guest) { setSignInOpen(true); return; }
     if (reactionBusy) return;
     const next = !viewerHasLiked;
     setLiked(next);
@@ -517,6 +537,7 @@ export default function ChatPage() {
   }
 
   async function toggleFavorite() {
+    if (guest) { setSignInOpen(true); return; }
     if (reactionBusy) return;
     const next = !viewerHasFavorited;
     setFavorited(next);
@@ -596,8 +617,9 @@ export default function ChatPage() {
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
+          {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
           <div className="mobile-tool-row">
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            {!guest && <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
@@ -662,7 +684,7 @@ export default function ChatPage() {
             <section className="mobile-tool-sheet" onClick={(event) => event.stopPropagation()}>
               <div className="mobile-sheet-handle" />
               <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
-              {mobileSheet === "model" && <div className="mobile-model-list">{models.map((model) => (
+              {mobileSheet === "model" && !guest && <div className="mobile-model-list">{models.map((model) => (
                 <button key={model.profile} className={model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => { void selectModel(model.profile); setMobileSheet(null); }}><span><b>{modelName(model)}</b><small>{model.coin_cost} coins / message</small></span><i>{model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
@@ -679,7 +701,8 @@ export default function ChatPage() {
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
           <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
           <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
-          <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>
+          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
+          {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>登录</button>}
           {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
         </div>
       </header>
@@ -780,7 +803,8 @@ export default function ChatPage() {
 
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-            {composerPanel === "model" && (
+            {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
+            {!guest && composerPanel === "model" && (
               <div className="composer-popover model-popover">
                 <header><b>Story model</b><small>Choose the model for this conversation</small></header>
                 {models.map((model) => (
@@ -812,7 +836,7 @@ export default function ChatPage() {
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              {!guest && <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
@@ -854,6 +878,11 @@ export default function ChatPage() {
           </div>
         </div>
       )}
+      {signInOpen && <EmailSignInDialog onAuthenticated={() => { setSignInOpen(false); void refresh().then(() => void load()); }} onClose={() => setSignInOpen(false)} />}
     </main>
   );
+}
+
+export default function ChatPage() {
+  return <PlumAuthProvider><ChatContent /></PlumAuthProvider>;
 }
