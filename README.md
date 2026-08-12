@@ -77,3 +77,13 @@ PLUM_DEV_MODE=false PLUM_CHAT_STREAMING_ENABLED=true \
 - 前端执行 `npm run build` 时设置 `PLUM_API_ORIGIN=http://<backend-internal-host>:8180`。
 - 浏览器只访问前端 HTTPS 域名；Next.js 通过同源 `/api/v1/products/plum/*` rewrite 代理后端，以满足 Strict Cookie 和 CSRF 约束。
 - 上线后在后端运行 `scripts/create_plum_access_invite.py`，按测试人数逐个生成邀请码。明文邀请码只在创建时输出一次。
+
+### Discord 社区入口
+
+在前端构建环境配置：
+
+```dotenv
+NEXT_PUBLIC_DISCORD_INVITE_URL=https://discord.gg/your-invite-code
+```
+
+配置后，首页、聊天页和 Create 页的 Community 按钮会在新标签直接打开 Discord；未配置时按钮不可点击。

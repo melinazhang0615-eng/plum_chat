@@ -17,6 +17,7 @@
 
 .shell button, .shell input, .shell textarea, .shell select { font: inherit; }
 .shell svg { width: 21px; height: 21px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
+.shell :global(.language-symbol) svg { fill: rgba(255,255,255,.82); stroke: none; }
 
 .saveStatus { display: inline-flex; align-items: center; gap: 7px; margin: 0 5px; color: rgba(255,255,255,.35); font-size: 10px; }
 .saveStatus i { width: 6px; height: 6px; border-radius: 50%; background: #d49466; animation: pulse 1s infinite; }
