@@ -475,7 +475,7 @@ curl --no-buffer --silent --show-error \
 后端增加：
 
 ```dotenv
-PLUM_CHAT_STREAMING_ENABLED=false
+PLUM_CHAT_STREAMING_ENABLED=true
 ```
 
 Bootstrap 返回服务端能力：
