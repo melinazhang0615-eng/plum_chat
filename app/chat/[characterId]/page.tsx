@@ -184,7 +184,7 @@ export default function ChatPage() {
       setConversation(detail.conversation);
       setMessages(detail.messages);
       setModels(detail.models);
-      setBalance(detail.wallet.balance);
+      setBalance(detail.wallet?.balance ?? 0);
       setUser(bootstrap.user);
       setHistory(conversationHistory.items);
       setExperience(detail.experience);
@@ -289,7 +289,7 @@ export default function ChatPage() {
       [700, 1800].forEach((delay) => {
         const timer = window.setTimeout(() => {
           void getConversation(conversationId)
-            .then((detail) => setBalance(detail.wallet.balance))
+            .then((detail) => setBalance(detail.wallet?.balance ?? 0))
             .catch(() => undefined);
         }, delay);
         reconciliationTimersRef.current.push(timer);
@@ -369,7 +369,7 @@ export default function ChatPage() {
               appendAssistantDelta(assistantId, streamEvent.text);
             } else if (streamEvent.type === "turn.completed") {
               flushAssistantBuffer(assistantId);
-              setBalance(streamEvent.wallet.balance);
+              setBalance(streamEvent.wallet?.balance ?? 0);
               setMessages((current) => current.map((item) => item.id === assistantId ? {
                 ...item,
                 id: streamEvent.message_id ?? item.id,
@@ -378,7 +378,7 @@ export default function ChatPage() {
               } : item));
             } else if (streamEvent.type === "turn.cancelled") {
               flushAssistantBuffer(assistantId);
-              setBalance(streamEvent.wallet.balance);
+              setBalance(streamEvent.wallet?.balance ?? 0);
               setMessages((current) => current.map((item) => item.id === assistantId ? {
                 ...item,
                 id: streamEvent.message_id ?? item.id,
@@ -387,7 +387,7 @@ export default function ChatPage() {
               } : item));
             } else if (streamEvent.type === "turn.failed") {
               flushAssistantBuffer(assistantId);
-              setBalance(streamEvent.wallet.balance);
+              setBalance(streamEvent.wallet?.balance ?? 0);
               setMessages((current) => current.map((item) => item.id === assistantId
                 ? { ...item, status: "failed" }
                 : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
@@ -407,7 +407,7 @@ export default function ChatPage() {
             content: result.reply.text,
             status: "completed",
           } : item));
-        setBalance(result.wallet.balance);
+        setBalance(result.wallet?.balance ?? 0);
       }
     } catch (sendError) {
       if (controller.signal.aborted) return;

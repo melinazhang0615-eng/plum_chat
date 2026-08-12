@@ -1,4 +1,4 @@
-import type { AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, ModelProfile, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
 
 const BASE = "/api/v1/products/plum";
 
@@ -20,9 +20,9 @@ type StreamBase = { version: 1; turn_id: string };
 export type TurnStreamEvent =
   | ({ type: "turn.accepted"; request_id: string; model_profile: ModelProfile["profile"]; reserved_coins: number; deduplicated?: boolean } & StreamBase)
   | ({ type: "message.delta"; seq: number; text: string } & StreamBase)
-  | ({ type: "turn.completed"; message_id: string | null; finish_reason: string; charged_coins: number; wallet: Wallet; deduplicated: boolean } & StreamBase)
-  | ({ type: "turn.cancelled"; message_id: string | null; charged_coins: number; wallet: Wallet } & StreamBase)
-  | ({ type: "turn.failed"; code: string; retryable: boolean; charged_coins: number; wallet: Wallet } & StreamBase);
+  | ({ type: "turn.completed"; message_id: string | null; finish_reason: string; charged_coins: number; wallet: Wallet | null; guest_quota?: GuestQuota; deduplicated: boolean } & StreamBase)
+  | ({ type: "turn.cancelled"; message_id: string | null; charged_coins: number; wallet: Wallet | null; guest_quota?: GuestQuota } & StreamBase)
+  | ({ type: "turn.failed"; code: string; retryable: boolean; charged_coins: number; wallet: Wallet | null; guest_quota?: GuestQuota } & StreamBase);
 
 type SseRecord = { event: string; data: string };
 
@@ -122,6 +122,42 @@ export function getBootstrap() {
   }>("/bootstrap");
 }
 
+export function getAuthContext() {
+  return request<AuthContext>("/auth/context");
+}
+
+export function createGuestSession() {
+  return request<AuthContext>("/auth/guest/session", { method: "POST" });
+}
+
+export function updateGuestProfile(profile: GuestProfile & { adult_confirmed: boolean }) {
+  return request<AuthContext>("/auth/guest/profile", {
+    method: "PATCH",
+    body: JSON.stringify(profile),
+  });
+}
+
+export function requestEmailChallenge(email: string) {
+  return request<{ status: "accepted"; challenge_id: string; retry_after_seconds: number }>("/auth/email/challenges", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function verifyEmailChallenge(challengeId: string, code: string, preferredName?: string) {
+  return request<{
+    status: "ok";
+    actor: { kind: "member"; user: AuthUser };
+    is_new_membership: boolean;
+    grant: { amount: number; was_applied: boolean };
+    wallet: Wallet;
+    expires_at: string;
+  }>("/auth/email/verify", {
+    method: "POST",
+    body: JSON.stringify({ challenge_id: challengeId, code, ...(preferredName?.trim() ? { preferred_name: preferredName.trim() } : {}) }),
+  });
+}
+
 export function redeemAccessCode(accessCode: string, displayName: string) {
   return request<{ status: string; user: AuthUser; wallet: Wallet; expires_at: string }>("/auth/access-code", {
     method: "POST",
@@ -156,7 +192,8 @@ export function getConversation(conversationId: string) {
     conversation: Conversation;
     messages: ChatMessage[];
     models: ModelProfile[];
-    wallet: Wallet;
+    wallet: Wallet | null;
+    guest_quota?: GuestQuota | null;
     experience: CharacterExperience;
   }>(`/conversations/${conversationId}`);
 }
@@ -192,19 +229,20 @@ export function setCharacterFavorite(characterId: string, active: boolean) {
   );
 }
 
-export function sendTurn(conversationId: string, text: string, requestId: string) {
+export function sendTurn(conversationId: string, text: string, requestId: string, guest = false) {
   return request<{
     status: string;
     reply: { message_id: string | null; text: string };
     charged_coins: number;
-    wallet: Wallet;
+    wallet: Wallet | null;
+    guest_quota?: GuestQuota;
     deduplicated: boolean;
   }>(`/conversations/${conversationId}/turns`, {
     method: "POST",
     body: JSON.stringify({
-      text,
       client_message_id: requestId,
       idempotency_key: requestId,
+      ...(guest ? { action: { kind: "message", text } } : { text }),
     }),
   });
 }
@@ -225,12 +263,14 @@ export async function sendTurnStream({
   conversationId,
   text,
   requestId,
+  guest = false,
   signal,
   onEvent,
 }: {
   conversationId: string;
   text: string;
   requestId: string;
+  guest?: boolean;
   signal: AbortSignal;
   onEvent: (event: TurnStreamEvent) => void;
 }): Promise<void> {
@@ -246,9 +286,9 @@ export async function sendTurnStream({
       ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
     },
     body: JSON.stringify({
-      text,
       client_message_id: requestId,
       idempotency_key: requestId,
+      ...(guest ? { action: { kind: "message", text } } : { text }),
     }),
   });
   if (!response.ok) {

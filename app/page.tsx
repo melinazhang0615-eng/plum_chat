@@ -5,7 +5,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
-import { ApiError, createConversation, getBootstrap, getFeed, logout, redeemAccessCode } from "@/lib/api";
+import { ApiError, createConversation, getFeed, logout } from "@/lib/api";
+import { EmailSignInDialog, PlumAuthProvider, usePlumAuth, WelcomeDialog } from "@/components/plum-auth";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, FeedCharacter } from "@/lib/types";
 
@@ -24,40 +25,9 @@ function LoadingState() {
   return <div className="feed-loading" aria-label="正在加载角色"><i /><span>Loading characters…</span></div>;
 }
 
-function AccessDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void }) {
-  const [displayName, setDisplayName] = useState("");
-  const [accessCode, setAccessCode] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!displayName.trim() || !accessCode.trim() || submitting) return;
-    setSubmitting(true); setError(null);
-    try {
-      const result = await redeemAccessCode(accessCode.trim(), displayName.trim());
-      onAuthenticated(result.user);
-    } catch (loginError) {
-      setError(loginError instanceof ApiError && loginError.message === "invalid_access_code" ? "邀请码无效或已过期，请联系测试负责人。" : "暂时无法登录，请稍后再试。");
-    } finally { setSubmitting(false); }
-  }
-
-  return <div className="access-overlay" role="dialog" aria-modal="true" aria-labelledby="access-title" onClick={onClose}>
-    <form className="access-card" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭登录"><CloseIcon /></button>
-      <Brand /><span className="access-kicker">PRIVATE BETA</span><h1 id="access-title">进入 Plum Chat</h1>
-      <p>登录后即可聊天、收藏角色并使用独立金币余额。</p>
-      <label><span>你的称呼</span><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="例如：Alice" /></label>
-      <label><span>邀请码</span><input value={accessCode} onChange={(event) => setAccessCode(event.target.value)} maxLength={160} autoComplete="one-time-code" placeholder="plum_…" /></label>
-      {error && <div className="access-error">{error}</div>}
-      <button className="access-submit" disabled={submitting || !displayName.trim() || !accessCode.trim()}>{submitting ? "正在进入…" : "进入 Plum Chat"}</button>
-      <small>邀请码只会绑定一个测试账号，请勿转发。</small>
-    </form>
-  </div>;
-}
-
-export default function FeedPage() {
+function FeedContent() {
   const router = useRouter();
+  const { context, loading: authLoading, refresh } = usePlumAuth();
   const [characters, setCharacters] = useState<FeedCharacter[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -65,6 +35,7 @@ export default function FeedPage() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<string | "create" | null>(null);
   const [activeTab, setActiveTab] = useState<(typeof MAIN_TABS)[number]>("For You");
   const [limitless, setLimitless] = useState(false);
@@ -95,13 +66,6 @@ export default function FeedPage() {
     try {
       const feed = await getFeed();
       setCharacters(feed.items);
-      try {
-        const bootstrap = await getBootstrap();
-        setBalance(bootstrap.wallet.balance); setUser(bootstrap.user);
-      } catch (authError) {
-        if (!(authError instanceof ApiError && authError.status === 401)) throw authError;
-        setUser(null); setBalance(0);
-      }
     } catch (loadError) {
       setError(
         loadError instanceof ApiError && loadError.status === 503
@@ -114,6 +78,11 @@ export default function FeedPage() {
 
   useEffect(() => { void load(); }, []);
   useEffect(() => {
+    if (!context) return;
+    if (context.actor.kind === "member") { setUser(context.actor.user); setBalance(context.wallet?.balance ?? 0); }
+    else { setUser(null); setBalance(0); }
+  }, [context]);
+  useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     if (query.get("login") === "1") setLoginOpen(true);
     if (query.get("search") === "1") setSearchOpen(true);
@@ -121,20 +90,24 @@ export default function FeedPage() {
 
   async function enterCharacter(characterId: string) {
     if (openingId) return;
+    if (authLoading) return;
+    if (!context || context.actor.kind === "visitor" || (context.actor.kind === "guest" && !context.actor.profile_complete)) {
+      setPendingTarget(characterId); setWelcomeOpen(true); return;
+    }
     setOpeningId(characterId); setError(null);
     try {
       const result = await createConversation(characterId);
       router.push(`/chat/${characterId}?conversation=${result.conversation.id}`);
     } catch (openError) {
       setOpeningId(null);
-      if (openError instanceof ApiError && openError.status === 401) { setPendingTarget(characterId); setLoginOpen(true); return; }
+      if (openError instanceof ApiError && openError.status === 401) { setPendingTarget(characterId); setWelcomeOpen(true); return; }
       setError("进入聊天失败了，请稍后再试。");
     }
   }
 
   async function signOut() {
     try { await logout(); } catch { /* an expired session is already signed out */ }
-    setUser(null); setBalance(0); setAccountOpen(false);
+    setUser(null); setBalance(0); setAccountOpen(false); void refresh();
   }
 
   function openCreate() {
@@ -144,9 +117,6 @@ export default function FeedPage() {
 
   function afterAuthentication(authenticatedUser: AuthUser) {
     setUser(authenticatedUser); setLoginOpen(false);
-    void getBootstrap()
-      .then((bootstrap) => setBalance(bootstrap.wallet.balance))
-      .catch(() => setBalance(0));
     const target = pendingTarget; setPendingTarget(null);
     if (target === "create") router.push("/create/v1");
     else if (target) void enterCharacter(target);
@@ -201,6 +171,11 @@ export default function FeedPage() {
       </article>)}</div>}
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
-    {loginOpen && <AccessDialog onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
+    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target === "create") setLoginOpen(true); else if (target) void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
+    {loginOpen && <EmailSignInDialog onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
   </main>;
+}
+
+export default function FeedPage() {
+  return <PlumAuthProvider><FeedContent /></PlumAuthProvider>;
 }
