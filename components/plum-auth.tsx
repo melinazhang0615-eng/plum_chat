@@ -58,9 +58,20 @@ function apiMessage(error: unknown) {
   const messages: Record<string, string> = {
     email_provider_unavailable: "邮件服务暂不可用，请稍后再试。",
     email_challenge_too_frequent: "发送太频繁，请稍后再试。",
+    email_auth_not_configured: "邮箱登录暂未配置，请稍后再试。",
+    email_auth_disabled: "邮箱登录暂未开放。",
     too_many_login_attempts: "尝试过于频繁，请稍后再试。",
     origin_required: "请使用正常浏览器页面继续。",
     guest_chat_disabled: "游客体验暂未开放。",
+    guest_session_required: "登录状态已失效，请刷新页面后重试。",
+    email_code_invalid: "验证码不正确，请重新输入。",
+    email_challenge_expired: "验证码已过期，请重新获取。",
+    email_challenge_attempts_exceeded: "错误次数过多，请重新获取验证码。",
+    email_challenge_invalid: "验证码已失效，请重新获取。",
+    email_challenge_consumed: "该验证码已使用，请重新获取。",
+    email_challenge_actor_mismatch: "登录环境已变化，请重新获取验证码。",
+    identity_target_disabled: "该账号当前不可用，请联系客服。",
+    identity_merge_conflict: "账号合并出现冲突，请联系客服。",
   };
   return messages[error.message] ?? "操作未完成，请检查输入后重试。";
 }
@@ -106,15 +117,37 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resendIn, setResendIn] = useState(0);
+
+  // 后端按邮箱限制重发间隔，倒计时归零前不放开「重新发送」。
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((seconds) => seconds - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  async function sendCode() {
+    await ensureGuest();
+    const result = await requestEmailChallenge(email.trim());
+    setChallengeId(result.challenge_id);
+    setResendIn(Math.max(1, result.retry_after_seconds));
+  }
 
   async function requestCode(event: FormEvent) {
     event.preventDefault();
     if (!email.trim() || submitting) return;
     setSubmitting(true); setError(null);
     try {
-      await ensureGuest();
-      const result = await requestEmailChallenge(email.trim());
-      setChallengeId(result.challenge_id);
+      await sendCode();
+    } catch (err) { setError(apiMessage(err)); } finally { setSubmitting(false); }
+  }
+
+  async function resendCode() {
+    if (submitting || resendIn > 0) return;
+    setSubmitting(true); setError(null);
+    try {
+      await sendCode();
+      setCode("");
     } catch (err) { setError(apiMessage(err)); } finally { setSubmitting(false); }
   }
 
@@ -148,7 +181,8 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
       {error && <div className="access-error">{error}</div>}
       {!challengeId && context?.capabilities.google_auth && <button type="button" className="text-action" onClick={() => void continueWithGoogle()} disabled={submitting}>Continue with Google</button>}
       <button className="access-submit" disabled={submitting || (!challengeId ? !email.trim() : code.length !== 6)}>{submitting ? "请稍候…" : challengeId ? "确认登录" : "发送验证码"}</button>
-      {challengeId && <button type="button" className="text-action" onClick={() => { setChallengeId(null); setCode(""); }}>换一个邮箱</button>}
+      {challengeId && <button type="button" className="text-action" onClick={() => void resendCode()} disabled={submitting || resendIn > 0}>{resendIn > 0 ? `重新发送（${resendIn}s）` : "重新发送验证码"}</button>}
+      {challengeId && <button type="button" className="text-action" onClick={() => { setChallengeId(null); setCode(""); setResendIn(0); }}>换一个邮箱</button>}
     </form>
   </div>;
 }
