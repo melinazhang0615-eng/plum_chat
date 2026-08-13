@@ -6,29 +6,31 @@ import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
 import { ApiError, getBootstrap, logout, uploadCreatorPortrait } from "@/lib/api";
 import type { AuthUser } from "@/lib/types";
-import styles from "./tipsy-v1.module.css";
+import styles from "./create-character-v1.module.css";
 
-type Rating = "Limited" | "Limitless";
-type Visibility = "Public" | "Private";
+type CreatorDeclaredRating = "general" | "mature";
+type Visibility = "public" | "private";
 type ImportKind = "json" | "txt" | "novel";
 type TextTarget = "settings" | "intro" | "opening" | "examples";
 type Gender = "" | "male" | "female" | "non_binary";
 
 type CharacterDraft = {
-  name: string;
+  displayName: string;
   gender: Gender;
   intro: string;
-  opening: string;
+  openingScene: string;
   characterSettings: string;
-  examples: string;
-  replyRules: string;
+  exampleDialogues: string;
+  responseRules: string;
   image: string;
   portraitMediaId: string;
+  portraitPositionX: number;
+  portraitPositionY: number;
   avatarPositionX: number;
   avatarPositionY: number;
-  rating: Rating;
+  creatorDeclaredRating: CreatorDeclaredRating;
   visibility: Visibility;
-  tags: string[];
+  tagIds: string[];
   adultConfirmed: boolean;
   rightsConfirmed: boolean;
 };
@@ -41,25 +43,48 @@ type ImportResult = {
   summary: string;
 };
 
+type LegacyCharacterDraft = Partial<CharacterDraft> & {
+  name?: unknown;
+  opening?: unknown;
+  examples?: unknown;
+  replyRules?: unknown;
+  rating?: unknown;
+  description?: unknown;
+  background?: unknown;
+};
+
+type TagOption = { id: string; label: string };
+
 const STORAGE_KEY = "plum.create.v1.single-character";
-const TAG_OPTIONS: readonly string[] = [];
+const TAG_OPTIONS: readonly TagOption[] = [];
 const PORTRAIT_ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
+const CREATE_LIMITS = {
+  displayName: 40,
+  intro: 500,
+  openingScene: 2000,
+  characterSettings: 12000,
+  exampleDialogues: 6000,
+  responseRules: 3000,
+  tagIds: 5,
+} as const;
 
 const EMPTY_DRAFT: CharacterDraft = {
-  name: "",
+  displayName: "",
   gender: "",
   intro: "",
-  opening: "",
+  openingScene: "",
   characterSettings: "",
-  examples: "",
-  replyRules: "",
+  exampleDialogues: "",
+  responseRules: "",
   image: "",
   portraitMediaId: "",
+  portraitPositionX: 50,
+  portraitPositionY: 50,
   avatarPositionX: 50,
   avatarPositionY: 50,
-  rating: "Limited",
-  visibility: "Public",
-  tags: [],
+  creatorDeclaredRating: "general",
+  visibility: "public",
+  tagIds: [],
   adultConfirmed: false,
   rightsConfirmed: false,
 };
@@ -97,11 +122,19 @@ function safeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function readTags(value: unknown) {
+function readStringList(value: unknown) {
   const values = Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : safeText(value).split(/[,，]/);
   return [...new Set(values.map((tag) => tag.trim()).filter(Boolean))].slice(0, 5);
+}
+
+function normalizeRating(value: unknown): CreatorDeclaredRating {
+  return value === "mature" || value === "Limitless" ? "mature" : "general";
+}
+
+function normalizeVisibility(value: unknown): Visibility {
+  return value === "private" || value === "Private" ? "private" : "public";
 }
 
 function normalizeGender(value: unknown): Gender {
@@ -113,6 +146,30 @@ function normalizeGender(value: unknown): Gender {
 
 function normalizePosition(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 50;
+}
+
+function normalizeStoredDraft(parsed: LegacyCharacterDraft): CharacterDraft {
+  return {
+    displayName: safeText(parsed.displayName) || safeText(parsed.name),
+    gender: normalizeGender(parsed.gender),
+    intro: safeText(parsed.intro) || safeText(parsed.description),
+    openingScene: safeText(parsed.openingScene) || safeText(parsed.opening),
+    characterSettings: safeText(parsed.characterSettings) || safeText(parsed.background),
+    exampleDialogues: safeText(parsed.exampleDialogues) || safeText(parsed.examples),
+    responseRules: safeText(parsed.responseRules) || safeText(parsed.replyRules),
+    image: safeText(parsed.image),
+    portraitMediaId: safeText(parsed.portraitMediaId),
+    portraitPositionX: normalizePosition(parsed.portraitPositionX),
+    portraitPositionY: normalizePosition(parsed.portraitPositionY),
+    avatarPositionX: normalizePosition(parsed.avatarPositionX),
+    avatarPositionY: normalizePosition(parsed.avatarPositionY),
+    creatorDeclaredRating: normalizeRating(parsed.creatorDeclaredRating ?? parsed.rating),
+    visibility: normalizeVisibility(parsed.visibility),
+    // Legacy `tags` stored display labels, not stable tag IDs, so they are not migrated silently.
+    tagIds: readStringList(parsed.tagIds),
+    adultConfirmed: parsed.adultConfirmed === true,
+    rightsConfirmed: parsed.rightsConfirmed === true,
+  };
 }
 
 function portraitUploadError(error: unknown) {
@@ -139,17 +196,16 @@ function mapTavernCard(raw: unknown): Partial<CharacterDraft> {
     scenario && `Scenario: ${scenario}`,
   ].filter(Boolean).join("\n\n");
   return {
-    name: safeText(source.name),
+    displayName: safeText(source.name),
     intro: safeText(source.description),
-    opening: safeText(source.first_mes) || safeText(source.greeting),
+    openingScene: safeText(source.first_mes) || safeText(source.greeting),
     characterSettings,
-    examples: safeText(source.mes_example),
-    replyRules: [systemPrompt, postHistory].filter(Boolean).join("\n\n"),
-    tags: readTags(source.tags),
+    exampleDialogues: safeText(source.mes_example),
+    responseRules: [systemPrompt, postHistory].filter(Boolean).join("\n\n"),
   };
 }
 
-export function TipsyCreateV1() {
+export function CreateCharacterV1() {
   const router = useRouter();
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
   const [hydrated, setHydrated] = useState(false);
@@ -177,17 +233,7 @@ export function TipsyCreateV1() {
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored) as Partial<CharacterDraft> & { description?: string; background?: string };
-        setDraft({
-          ...EMPTY_DRAFT,
-          ...parsed,
-          gender: normalizeGender(parsed.gender),
-          tags: readTags(parsed.tags),
-          intro: safeText(parsed.intro) || safeText(parsed.description),
-          characterSettings: safeText(parsed.characterSettings) || safeText(parsed.background),
-          avatarPositionX: normalizePosition(parsed.avatarPositionX),
-          avatarPositionY: normalizePosition(parsed.avatarPositionY),
-        });
+        setDraft(normalizeStoredDraft(JSON.parse(stored) as LegacyCharacterDraft));
       }
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
@@ -217,17 +263,24 @@ export function TipsyCreateV1() {
       });
   }, []);
 
-  const tags = draft.tags.slice(0, 5);
+  const selectedTags = TAG_OPTIONS.filter((tag) => draft.tagIds.includes(tag.id));
   const previewCover = draft.image || "/characters/luna.svg";
   const canCreate = Boolean(
-    draft.name.trim()
+    draft.displayName.trim()
+    && draft.displayName.length <= CREATE_LIMITS.displayName
     && draft.gender
-    && draft.image
+    && draft.portraitMediaId
     && draft.intro.trim()
-    && draft.opening.trim()
+    && draft.intro.length <= CREATE_LIMITS.intro
+    && draft.openingScene.trim()
+    && draft.openingScene.length <= CREATE_LIMITS.openingScene
     && draft.characterSettings.trim()
-    && draft.tags.length > 0
-    && draft.rating
+    && draft.characterSettings.length <= CREATE_LIMITS.characterSettings
+    && draft.exampleDialogues.length <= CREATE_LIMITS.exampleDialogues
+    && draft.responseRules.length <= CREATE_LIMITS.responseRules
+    && draft.tagIds.length > 0
+    && draft.tagIds.length <= CREATE_LIMITS.tagIds
+    && draft.creatorDeclaredRating
     && draft.visibility
     && draft.adultConfirmed
     && draft.rightsConfirmed
@@ -244,14 +297,14 @@ export function TipsyCreateV1() {
     setAccountOpen(false);
   }
 
-  function toggleTag(tag: string) {
-    setDraft((current) => current.tags.includes(tag)
-      ? { ...current, tags: current.tags.filter((item) => item !== tag) }
-      : current.tags.length < 5 ? { ...current, tags: [...current.tags, tag] } : current);
+  function toggleTag(tagId: string) {
+    setDraft((current) => current.tagIds.includes(tagId)
+      ? { ...current, tagIds: current.tagIds.filter((item) => item !== tagId) }
+      : current.tagIds.length < CREATE_LIMITS.tagIds ? { ...current, tagIds: [...current.tagIds, tagId] } : current);
   }
 
-  function removeTag(tag: string) {
-    update({ tags: draft.tags.filter((item) => item !== tag) });
+  function removeTag(tagId: string) {
+    update({ tagIds: draft.tagIds.filter((item) => item !== tagId) });
   }
 
   function showToast(message: string) {
@@ -284,6 +337,8 @@ export function TipsyCreateV1() {
       update({
         image: media.preview_url,
         portraitMediaId: media.media_id,
+        portraitPositionX: 50,
+        portraitPositionY: 50,
         avatarPositionX: 50,
         avatarPositionY: 50,
       });
@@ -371,7 +426,7 @@ export function TipsyCreateV1() {
       showToast("Character card fields added to the form");
     } else if (importResult.kind === "txt") {
       const targetMap: Record<TextTarget, keyof CharacterDraft> = {
-        settings: "characterSettings", intro: "intro", opening: "opening", examples: "examples",
+        settings: "characterSettings", intro: "intro", opening: "openingScene", examples: "exampleDialogues",
       };
       update({ [targetMap[textTarget]]: importResult.raw });
       showToast("TXT content added to the selected field");
@@ -380,9 +435,9 @@ export function TipsyCreateV1() {
   }
 
   return <main className={styles.shell}>
-    <header className="tipsy-header">
+    <header className="plum-header">
       <div className="header-brand-group"><Brand ariaLabel="Back to Plum home"/><CommunityLink /></div>
-      <div className="tipsy-header-right">
+      <div className="plum-header-right">
         <button className="header-circle" aria-label="Search" onClick={() => router.push("/?search=1")}><SearchIcon/></button>
         <button className="header-circle" aria-label="Create" title="Create" aria-current="page"><CreateIcon/></button>
         <div className="header-menu-wrap">
@@ -430,7 +485,7 @@ export function TipsyCreateV1() {
           <section className={styles.formSection}>
             <header className={styles.sectionTitle}><div><span>01</span><h2>Meet your character</h2></div></header>
             <div className={styles.twoColumns}>
-              <Field label="Name" required count={`${draft.name.length}/50`}><input value={draft.name} maxLength={50} placeholder="Enter a character name" onChange={(event) => update({ name: event.target.value })}/></Field>
+              <Field label="Name" required count={`${draft.displayName.length}/${CREATE_LIMITS.displayName}`}><input value={draft.displayName} maxLength={CREATE_LIMITS.displayName} placeholder="Enter a character name" onChange={(event) => update({ displayName: event.target.value })}/></Field>
               <Field label="Gender" required><select value={draft.gender} onChange={(event) => update({ gender: event.target.value as Gender })}><option value="" disabled>Select gender</option><option value="male">Male</option><option value="female">Female</option><option value="non_binary">Non-binary</option></select></Field>
             </div>
           </section>
@@ -473,17 +528,17 @@ export function TipsyCreateV1() {
 
           <section className={styles.formSection}>
             <header className={styles.sectionTitle}><div><span>03</span><h2>Character details</h2></div><p>Introduce the character publicly, then define how they should behave in every conversation.</p></header>
-            <Field label="Character Intro" required hint="Shown publicly on the character card. Give people a clear, compelling reason to meet this character." count={`${draft.intro.length}/500`}><textarea rows={5} maxLength={500} value={draft.intro} placeholder="Introduce the character's identity, personality, and story hook…" onChange={(event) => update({ intro: event.target.value })}/></Field>
-            <Field label="Opening Scene" required hint="The first scene users will see. Establish the setting, action, and the character's opening line." count={`${draft.opening.length}/2000`}><textarea rows={8} maxLength={2000} value={draft.opening} placeholder="Set the scene and invite the user into the story…" onChange={(event) => update({ opening: event.target.value })}/></Field>
-            <Field label="Character Settings" required hint="Private instructions that guide every reply. Define personality, history, goals, boundaries, and the relationship with the user." count={`${draft.characterSettings.length}/5000`}><textarea rows={11} maxLength={5000} value={draft.characterSettings} placeholder="Define the character's core identity, memories, motivations, boundaries, and relationship with the user…" onChange={(event) => update({ characterSettings: event.target.value })}/></Field>
+            <Field label="Character Intro" required hint="Shown publicly on the character card. Give people a clear, compelling reason to meet this character." count={`${draft.intro.length}/${CREATE_LIMITS.intro}`}><textarea rows={5} maxLength={CREATE_LIMITS.intro} value={draft.intro} placeholder="Introduce the character's identity, personality, and story hook…" onChange={(event) => update({ intro: event.target.value })}/></Field>
+            <Field label="Opening Scene" required hint="The first scene users will see. Establish the setting, action, and the character's opening line." count={`${draft.openingScene.length}/${CREATE_LIMITS.openingScene}`}><textarea rows={8} maxLength={CREATE_LIMITS.openingScene} value={draft.openingScene} placeholder="Set the scene and invite the user into the story…" onChange={(event) => update({ openingScene: event.target.value })}/></Field>
+            <Field label="Character Settings" required hint="Private instructions that guide every reply. Define personality, history, goals, boundaries, and the relationship with the user." count={`${draft.characterSettings.length}/${CREATE_LIMITS.characterSettings}`}><textarea rows={11} maxLength={CREATE_LIMITS.characterSettings} value={draft.characterSettings} placeholder="Define the character's core identity, memories, motivations, boundaries, and relationship with the user…" onChange={(event) => update({ characterSettings: event.target.value })}/></Field>
           </section>
 
           <section className={styles.formSection}>
             <details className={styles.moreSettings} open>
               <summary><span><b>More Settings</b><small>Optional tools for a more consistent voice and behavior</small></span><i>⌄</i></summary>
               <div className={styles.settingsBody}>
-                <Field label="Example Dialogues" hint="Show how the character speaks and reacts. Use {{user}} and {{char}} to identify each speaker." count={`${draft.examples.length}/4000`}><textarea rows={8} maxLength={4000} value={draft.examples} placeholder={'{{user}}: Do you know me?\n{{char}}: Longer than you realize.'} onChange={(event) => update({ examples: event.target.value })}/></Field>
-                <Field label="Response rules" hint="Add specific behaviors the character should always follow—or avoid—in every reply."><textarea rows={6} value={draft.replyRules} placeholder="For example: Move the story through actions; never decide for the user; avoid repeating the previous reply…" onChange={(event) => update({ replyRules: event.target.value })}/></Field>
+                <Field label="Example Dialogues" hint="Show how the character speaks and reacts. Use {{user}} and {{char}} to identify each speaker." count={`${draft.exampleDialogues.length}/${CREATE_LIMITS.exampleDialogues}`}><textarea rows={8} maxLength={CREATE_LIMITS.exampleDialogues} value={draft.exampleDialogues} placeholder={'{{user}}: Do you know me?\n{{char}}: Longer than you realize.'} onChange={(event) => update({ exampleDialogues: event.target.value })}/></Field>
+                <Field label="Response rules" hint="Add specific behaviors the character should always follow—or avoid—in every reply." count={`${draft.responseRules.length}/${CREATE_LIMITS.responseRules}`}><textarea rows={6} maxLength={CREATE_LIMITS.responseRules} value={draft.responseRules} placeholder="For example: Move the story through actions; never decide for the user; avoid repeating the previous reply…" onChange={(event) => update({ responseRules: event.target.value })}/></Field>
               </div>
             </details>
           </section>
@@ -491,24 +546,24 @@ export function TipsyCreateV1() {
           <section className={styles.formSection}>
             <header className={styles.sectionTitle}><div><span>04</span><h2>Publish settings</h2></div><p>Choose how people can discover, understand, and access your character.</p></header>
             <div className={styles.tagField}>
-              <div className={styles.tagLabelRow}><b>Tags<i className={styles.requiredMark}>*</i></b><small>{tags.length}/5 selected</small></div>
+              <div className={styles.tagLabelRow}><b>Tags<i className={styles.requiredMark}>*</i></b><small>{selectedTags.length}/5 selected</small></div>
               <p>Tags help people discover your character in search and recommendations. Choose the most relevant ones so the right audience can find you.</p>
               <div className={styles.tagSelector}>
                 <div className={styles.selectedTags}>
-                  {tags.map((tag) => <span key={tag}>{tag}<button type="button" onClick={() => removeTag(tag)} aria-label={`Remove ${tag}`}>×</button></span>)}
-                  <button type="button" className={styles.tagSelectTrigger} onClick={() => setTagPickerOpen((open) => !open)} aria-expanded={tagPickerOpen}><b>＋</b>{tags.length ? "Add tags" : "Select tags"}<i>⌄</i></button>
+                  {selectedTags.map((tag) => <span key={tag.id}>{tag.label}<button type="button" onClick={() => removeTag(tag.id)} aria-label={`Remove ${tag.label}`}>×</button></span>)}
+                  <button type="button" className={styles.tagSelectTrigger} onClick={() => setTagPickerOpen((open) => !open)} aria-expanded={tagPickerOpen}><b>＋</b>{selectedTags.length ? "Add tags" : "Select tags"}<i>⌄</i></button>
                 </div>
                 {tagPickerOpen && <section className={styles.tagPicker} aria-label="Tag options">
                   <header><div><b>Select tags</b><small>Choose up to five</small></div><button type="button" onClick={() => setTagPickerOpen(false)} aria-label="Close tag options"><Icon name="close"/></button></header>
                   {TAG_OPTIONS.length > 0
-                    ? <div>{TAG_OPTIONS.map((tag) => <button type="button" key={tag} className={tags.includes(tag) ? styles.selectedTagOption : ""} aria-pressed={tags.includes(tag)} onClick={() => toggleTag(tag)} disabled={!tags.includes(tag) && tags.length >= 5}>{tag}{tags.includes(tag) && <i>✓</i>}</button>)}</div>
+                    ? <div>{TAG_OPTIONS.map((tag) => <button type="button" key={tag.id} className={draft.tagIds.includes(tag.id) ? styles.selectedTagOption : ""} aria-pressed={draft.tagIds.includes(tag.id)} onClick={() => toggleTag(tag.id)} disabled={!draft.tagIds.includes(tag.id) && draft.tagIds.length >= 5}>{tag.label}{draft.tagIds.includes(tag.id) && <i>✓</i>}</button>)}</div>
                     : <p>The tag taxonomy is being prepared. Available options will appear here once confirmed.</p>}
                 </section>}
               </div>
             </div>
             <div className={styles.optionGroups}>
-              <fieldset><legend>Content rating<i className={styles.requiredMark}>*</i></legend><button className={draft.rating === "Limited" ? styles.selected : ""} onClick={() => update({ rating: "Limited" })}><b>Limited</b><small>Suitable for general audiences</small></button><button className={draft.rating === "Limitless" ? styles.selected : ""} onClick={() => update({ rating: "Limitless" })}><b>Limitless</b><small>Adult-oriented themes for users aged 18+</small></button></fieldset>
-              <fieldset><legend>Visibility<i className={styles.requiredMark}>*</i></legend><button className={draft.visibility === "Public" ? styles.selected : ""} onClick={() => update({ visibility: "Public" })}><b>Public</b><small>Discoverable in search and recommendations</small></button><button className={draft.visibility === "Private" ? styles.selected : ""} onClick={() => update({ visibility: "Private" })}><b>Private</b><small>Visible only to you</small></button></fieldset>
+              <fieldset><legend>Content rating<i className={styles.requiredMark}>*</i></legend><button className={draft.creatorDeclaredRating === "general" ? styles.selected : ""} onClick={() => update({ creatorDeclaredRating: "general" })}><b>Limited</b><small>Suitable for general audiences</small></button><button className={draft.creatorDeclaredRating === "mature" ? styles.selected : ""} onClick={() => update({ creatorDeclaredRating: "mature" })}><b>Limitless</b><small>Adult-oriented themes for users aged 18+</small></button></fieldset>
+              <fieldset><legend>Visibility<i className={styles.requiredMark}>*</i></legend><button className={draft.visibility === "public" ? styles.selected : ""} onClick={() => update({ visibility: "public" })}><b>Public</b><small>Discoverable in search and recommendations</small></button><button className={draft.visibility === "private" ? styles.selected : ""} onClick={() => update({ visibility: "private" })}><b>Private</b><small>Visible only to you</small></button></fieldset>
             </div>
             <div className={styles.confirmations}>
               <label><input type="checkbox" checked={draft.adultConfirmed} onChange={(event) => update({ adultConfirmed: event.target.checked })}/><span><b>I confirm that this character is depicted as an adult aged 18 or older<i className={styles.requiredMark}>*</i></b><small>Required before publishing</small></span></label>
@@ -529,13 +584,13 @@ export function TipsyCreateV1() {
         <button className={styles.previewClose} onClick={() => setMobilePreview(false)} aria-label="Close preview"><Icon name="close"/></button>
         <h2>Preview</h2>
         <div className={styles.consumerCardPreview}>
-          <article className={`tipsy-card ${styles.staticConsumerCard}`} aria-label="Home character card preview">
+          <article className={`character-card ${styles.staticConsumerCard}`} aria-label="Home character card preview">
             <div className="card-hit-area">
-              <img className="tipsy-card-cover" src={previewCover} alt="Character cover preview"/>
+              <img className="character-card-cover" src={previewCover} alt="Character cover preview"/>
               <span className="card-darken" />
               <span className="card-copy">
-                <strong>{draft.name || "Character name"}</strong>
-                {tags.length > 0 && <span className="card-meta-row">{tags.slice(0, 3).map((tag, tagIndex) => <span className={`character-tag${tagIndex === 2 ? " character-tag-tertiary" : ""}`} key={tag}>{tag}</span>)}</span>}
+                <strong>{draft.displayName || "Character name"}</strong>
+                {selectedTags.length > 0 && <span className="card-meta-row">{selectedTags.slice(0, 3).map((tag, tagIndex) => <span className={`character-tag${tagIndex === 2 ? " character-tag-tertiary" : ""}`} key={tag.id}>{tag.label}</span>)}</span>}
                 <span className="card-tagline" tabIndex={0}>{draft.intro || "Your public Character Intro will appear here."}</span>
               </span>
             </div>

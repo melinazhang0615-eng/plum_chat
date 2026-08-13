@@ -695,9 +695,9 @@ function ChatContent() {
         )}
       </section>
 
-      <header className="tipsy-header chat-site-header">
+      <header className="plum-header chat-site-header">
         <div className="header-brand-group"><Brand /><CommunityLink /></div>
-        <div className="tipsy-header-right">
+        <div className="plum-header-right">
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
           <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
           <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>

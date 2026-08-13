@@ -124,10 +124,10 @@ function FeedContent() {
 
   function clearFilters() { setLimitless(false); setGender("All"); setSelectedTags([]); }
 
-  return <main className="tipsy-feed-shell">
-    <header className="tipsy-header">
+  return <main className="feed-shell">
+    <header className="plum-header">
       <div className="header-brand-group"><Brand /><CommunityLink /></div>
-      <div className="tipsy-header-right">
+      <div className="plum-header-right">
         <button className="header-circle" aria-label="搜索" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
         <button className="header-circle" aria-label="创作" title="创作" onClick={openCreate}><CreateIcon /></button>
         <div className="header-menu-wrap">
@@ -160,9 +160,9 @@ function FeedContent() {
         </div>
       </div>
       {error && <div className="error-banner"><span>{error}</span><button onClick={() => void load()}>重新加载</button></div>}
-      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>没有找到符合条件的角色</strong><button onClick={clearFilters}>清除筛选</button></div> : <div className="tipsy-grid">{visibleCharacters.map((character, index) => <article className="tipsy-card" key={character.id}>
+      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>没有找到符合条件的角色</strong><button onClick={clearFilters}>清除筛选</button></div> : <div className="character-grid">{visibleCharacters.map((character, index) => <article className="character-card" key={character.id}>
         <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`和 ${character.display_name} 开始聊天`}>
-          <Image className="tipsy-card-cover" src={character.cover_ref ?? "/characters/kai.svg"} alt={character.display_name} fill priority={index < 6} sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" />
+          <Image className="character-card-cover" src={character.cover_ref ?? "/characters/kai.svg"} alt={character.display_name} fill priority={index < 6} sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" />
           <span className="card-darken" />
           {openingId === character.id && <span className="opening-card">Entering story…</span>}
           <span className="card-copy"><strong>{character.display_name}</strong><span className="card-meta-row"><span className="chat-count"><MessageIcon />{formatCompactCount(character.interaction_count)}</span>{character.tags.slice(0, 3).map((tag, tagIndex) => <span className={`character-tag${tagIndex === 2 ? " character-tag-tertiary" : ""}`} key={tag}>{tag}</span>)}</span><span className="card-tagline">{character.tagline}</span></span>
