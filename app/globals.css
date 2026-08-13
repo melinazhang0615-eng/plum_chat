@@ -18,6 +18,10 @@
 .access-card label { display: flex; flex-direction: column; gap: 7px; color: #d8d7dc; font-size: 12px; font-weight: 700; }
 .access-card input { width: 100%; height: 48px; padding: 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; outline: none; color: #fff; background: rgba(255,255,255,.055); font: inherit; }
 .access-card input:focus { border-color: #8d72ff; box-shadow: 0 0 0 3px rgba(112,76,255,.16); }
+.access-card select { width: 100%; height: 48px; padding: 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; outline: none; color: #fff; background: #24242c; font: inherit; }
+.consent { flex-direction: row !important; align-items: flex-start; line-height: 1.45; font-weight: 500 !important; }
+.consent input { width: 16px !important; height: 16px !important; margin: 1px 0 0; accent-color: #8d72ff; }
+.text-action { border: 0; padding: 4px; color: #c9baff; background: transparent; font: inherit; cursor: pointer; }
 .access-error { padding: 10px 12px; border-radius: 10px; color: #ffc3ca; background: rgba(200,47,69,.18); font-size: 12px; }
 .access-submit { height: 49px; border: 0; border-radius: 13px; color: #fff; background: linear-gradient(135deg, #754cff, #9f63ff); font-weight: 800; cursor: pointer; }
 .access-submit:disabled { opacity: .45; cursor: default; }
@@ -263,6 +267,9 @@ svg { display: block; }
 .has-tooltip:hover::after,.has-tooltip:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }.more-pill.has-tooltip::after { left: auto; right: 0; bottom: auto; top: calc(100% + 7px); transform: translateY(-3px); }.more-pill.has-tooltip:hover::after,.more-pill.has-tooltip:focus-visible::after { transform: none; }
 .composer-error { display: flex; justify-content: space-between; margin-bottom: 5px; padding: 6px 9px; border: 1px solid rgba(255,145,162,.22); border-radius: 7px; color: #ffd1d8; background: rgba(105,35,46,.5); font-size: 9px; }
 .composer-error button { border: 0; background: transparent; cursor: pointer; }
+.guest-quota-banner { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 8px 10px; border: 1px solid rgba(169,132,255,.32); border-radius: 9px; color: #eee8ff; background: rgba(99,61,168,.22); font-size: 11px; cursor: pointer; }
+.guest-quota-banner span { color: #c8afff; font-weight: 800; }
+.guest-header-login { height: 34px; padding: 0 13px; border: 1px solid rgba(174,144,255,.5); border-radius: 999px; color: #eee8ff; background: rgba(111,76,204,.22); font-weight: 700; cursor: pointer; }
 .chat-reference-footer { height: 30px; position: absolute; left: 30px; right: 30px; bottom: 0; display: flex; align-items: center; justify-content: space-between; color: rgba(255,255,255,.43); font-size: 8px; }
 
 /* Mobile chat is a dedicated full-screen composition, not a cropped desktop canvas. */
@@ -385,6 +392,7 @@ svg { display: block; }
   .mobile-composer-panel { position: relative; flex: 0 0 auto; padding: 6px 10px max(9px, env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(15,15,17,0), rgba(15,15,17,.62) 22%, rgba(15,15,17,.86)); backdrop-filter: blur(8px); }
   .mobile-composer-error { display: flex; justify-content: space-between; margin-bottom: 4px; padding: 6px 9px; border: 1px solid rgba(255,145,162,.3); border-radius: 8px; color: #ffe0e5; background: rgba(91,29,40,.8); font-size: 10px; }
   .mobile-composer-error button { border: 0; background: transparent; }
+  .guest-quota-banner { margin-bottom: 6px; font-size: 10px; }
   .mobile-tool-row { height: 30px; display: flex; align-items: center; gap: 8px; }
   .mobile-tool-row > span { flex: 1; }
   .mobile-card-pill { height: 30px; max-width: 150px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 10px; color: rgba(255,255,255,.85); background: rgba(255,255,255,.06); font-size: 11px; font-weight: 600; }

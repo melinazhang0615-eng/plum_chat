@@ -9,6 +9,41 @@ export type AuthUser = {
   display_name: string;
 };
 
+export type GuestProfile = {
+  pronouns: "she_her" | "he_him" | "they_them" | "other";
+  relationship_preference: "male" | "female" | "all" | "no_preference" | null;
+  genres: string[];
+};
+
+export type GuestQuota = {
+  used_turns: number;
+  limit: number;
+  remaining_turns: number;
+  sign_in_required: boolean;
+};
+
+export type PlumCapabilities = {
+  guest_chat: boolean;
+  email_auth: boolean;
+  google_auth: boolean;
+  apple_auth?: boolean;
+  chat_streaming: boolean;
+};
+
+export type AuthActor =
+  | { kind: "visitor"; user: null; profile_complete: false }
+  | { kind: "guest"; user: { id: string; display_name: null }; profile_complete: boolean; profile?: GuestProfile }
+  | { kind: "member"; user: AuthUser; profile_complete: true };
+
+export type AuthContext = {
+  status: "ok";
+  actor: AuthActor;
+  capabilities: PlumCapabilities;
+  guest_quota: GuestQuota | null;
+  wallet: Wallet | null;
+  session_expires_at: string | null;
+};
+
 export type ModelProfile = {
   profile: "fast" | "balanced" | "immersive";
   display_name: string;
@@ -62,7 +97,7 @@ export type FeedCharacter = Character & {
 export type Conversation = {
   id: string;
   character_id: string;
-  model_profile: ModelProfile["profile"];
+  model_profile: ModelProfile["profile"] | "guest_free";
   runtime_session_id: number;
   updated_at?: string;
   character: Character;

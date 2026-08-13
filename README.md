@@ -3,6 +3,7 @@
 ## 文档
 
 - [MVP 产品需求文档](./docs/PRD-MVP-v0.1.md)
+- [新用户注册登录 PRD](./docs/PRD-02-registration-login.md)
 - [总体技术架构](./docs/TECH-01-architecture.md)
 - [前端技术方案](./docs/TECH-02-frontend.md)
 - [后端与 Agent 框架集成方案](./docs/TECH-03-backend-agent-integration.md)
@@ -11,6 +12,7 @@
 - [当前 UI 数据归属与后端扩展方案](./docs/TECH-06-data-ownership-and-backend-plan.md)
 - [公网多人内测身份方案（路线 B）](./docs/TECH-07-public-test-auth.md)
 - [流式聊天技术方案](./docs/TECH-08-streaming-chat.md)
+- [新用户注册登录技术设计](./docs/TECH-09-registration-login.md)
 - [同事本地运行交接](./docs/HANDOFF-02-local-checkout-and-run.md)
 - [线上升级部署简版交接](./docs/HANDOFF-04-production-upgrade-brief.md)
 
