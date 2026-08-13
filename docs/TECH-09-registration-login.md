@@ -8,6 +8,22 @@
 
 关联 PRD：[PRD-02 Plum 新用户注册登录](./PRD-02-registration-login.md)
 
+## 0. 实现状态（截至 2026-08-13）
+
+本文正文是**已冻结的设计契约，保持原样**；下表说明各部分与当前代码的对应关系。契约描述了
+目标形态，未实现项属于「尚未交付」而非「设计有误」。
+
+| 能力 | 状态 | 说明 |
+| --- | --- | --- |
+| Guest Session / Profile / 服务端额度 | 已实现 | 额度默认 打字 2、Continue 全局 8 / 单角色 2 |
+| Guest 免费模型与回复限长 | 已实现 | 服务端强制 `guest_free` |
+| Email OTP 登录与原地晋升 | 已实现 | SMTP adapter 已接通并本地验证 |
+| 返回用户 Email 合并 | 已实现 | 事务性合并游客全部会话与 Profile |
+| Google OAuth（Authorization Code + PKCE） | 已实现 | 本地已验证授权跳转与回跳 |
+| 首登 1000 金币幂等发放 | 已实现 | |
+| §6.5 邀请码账号绑定正式身份 | **未实现** | `POST /auth/identities/email/*`、`GET /auth/identities/google/start` 尚未落地；§14 交付项 6 未开始。邀请码账号目前只能继续用邀请码登录 |
+| Apple 登录 | **未实现** | 仅保留 capability 位 `apple_auth`（恒为 false）与前端 UI 位置，没有 Apple adapter 或路由。§6.4 末尾「Apple 使用相同接口形状」描述的是目标形态；当前 start 路径返回 404 是因为路由不存在。待原生 App 上架计划与 Apple 配置就绪后再实现并验证 |
+
 ## 1. 设计目标
 
 在保留现有 Plum `SessionPrincipal`、Membership、Runtime、钱包、Conversation 和 SSE 能力的基础上，引入受限 Guest 身份及 Email/Google 正式身份，实现：
@@ -284,6 +300,7 @@ plum:new-member-grant:<platform_user_id>:v1
     "profile_complete": true
   },
   "capabilities": {
+    "chat_streaming": true,
     "guest_chat": true,
     "email_auth": true,
     "google_auth": true,
@@ -330,7 +347,7 @@ Visitor 返回 200，不用 401。Feed 可与 Auth Context 并行加载。
 {"email": "user@example.com"}
 ```
 
-统一返回 `202 {"status":"accepted","retry_after_seconds":60}`，不暴露账号是否存在。限制：单 IP、单邮箱、单 Guest、全局 provider 限流。
+统一返回 `202 {"status":"accepted","challenge_id":"pich_...","retry_after_seconds":60}`，不暴露账号是否存在。`challenge_id` 是后续 verify 的必需入参；`retry_after_seconds` 供前端做重发倒计时。限制：单 IP、单邮箱、单 Guest、全局 provider 限流。
 
 `POST /auth/email/verify`
 
@@ -361,7 +378,7 @@ Visitor 返回 200，不用 401。Feed 可与 Auth Context 并行加载。
 
 - 生成 state、nonce、PKCE challenge；challenge 绑定 Guest 和浏览器。
 - `return_to` 只允许站内相对路径，不允许 open redirect。
-- 302 到 Google Authorization Endpoint。
+- 307 到 Google Authorization Endpoint（callback 回跳用 303）。
 
 `GET /auth/oauth/google/callback?code=...&state=...`
 
@@ -621,6 +638,30 @@ PLUM_GOOGLE_AUTH_ENABLED
 PLUM_APPLE_AUTH_ENABLED
 PLUM_PUBLIC_TEST_AUTH_ENABLED
 ```
+
+能力位只是开关；开启后还必须提供下列配置，否则代码 fail closed（邮箱返回
+`503 email_provider_unavailable` 或 `503 email_auth_not_configured`，Google 能力位保持 false）：
+
+```text
+# Email OTP
+PLUM_EMAIL_OTP_PEPPER            # >=32 字符；不与其他签名密钥复用
+PLUM_EMAIL_SENDER_MODE           # disabled | smtp
+PLUM_EMAIL_SMTP_HOST/PORT/USERNAME/PASSWORD/FROM
+PLUM_EMAIL_SMTP_STARTTLS
+PLUM_EMAIL_OTP_EXPIRES_MINUTES   # 默认 10
+PLUM_EMAIL_OTP_MAX_ATTEMPTS      # 默认 5
+PLUM_EMAIL_OTP_RESEND_SECONDS    # 默认 60，前端重发倒计时取此值
+
+# Google OAuth
+PLUM_GOOGLE_CLIENT_ID
+PLUM_GOOGLE_CLIENT_SECRET
+PLUM_GOOGLE_REDIRECT_URI         # 与 GCP 登记值逐字符一致
+PLUM_OAUTH_STATE_PEPPER          # >=32 字符；缺省时回落到 OTP pepper，生产应单独配置
+PLUM_OAUTH_STATE_TTL_SECONDS     # 默认 600
+```
+
+注意开启正式登录会**关闭开发固定身份**：`PLUM_EMAIL_AUTH_ENABLED` 或
+`PLUM_GOOGLE_AUTH_ENABLED` 为真时，无论 `PLUM_DEV_MODE` 如何都不再注入 dev seed 身份。
 
 发布顺序：
 
