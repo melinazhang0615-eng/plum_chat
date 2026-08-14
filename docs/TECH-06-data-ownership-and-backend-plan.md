@@ -35,7 +35,7 @@
 | 元素 | 当前处理 | 最终归属 |
 | --- | --- | --- |
 | 2×5 网格、卡片比例、遮罩、字体、hover、loading skeleton | CSS/React | 前端 |
-| 十张参考封面 | `public/characters/tipsy-reference/` | 联调期仍由前端托管文件，但路径由后端 `cover_ref` 返回；正式版上传对象存储/CDN |
+| 十张参考封面 | `public/characters/reference-covers/` | 联调期仍由前端托管文件，但路径由后端 `cover_ref` 返回；正式版上传对象存储/CDN |
 | 角色名、tagline、Creator、badge、是否支持语音 | 已由 Plum seed/API 返回 | Plum 后端为权威来源 |
 | 互动数 | 后端返回原始整数，前端格式化为 `48.2K` | Plum 聚合统计表 |
 | 排序与分区 | 后端 `sort_order` 返回当前固定顺序 | Plum Feed 查询与运营排序 |
@@ -130,7 +130,7 @@ type CharacterExperience = {
 
 - seed 必须幂等，重复执行只做可控 upsert，不重复创建角色、评论、Memory、徽章或赠送流水。
 - 每张 Feed 卡是一条独立测试角色；不保留“10 张卡共用 2 个角色”的临时映射。
-- 当前图片仍由前端 `public/characters/tipsy-reference/` 托管，后端 `cover_ref` 返回该相对路径；联调通过后再换 CDN URL。
+- 当前图片仍由前端 `public/characters/reference-covers/` 托管，后端 `cover_ref` 返回该相对路径；联调通过后再换 CDN URL。
 - 每个测试角色必须有自己的公开字段、Prompt、Greeting、Profile、统计及 Feed 顺序，点击卡片后名称和聊天人格不得错位。
 - `fixture_version=reference_fixture_v1` 只用于 seed/审计，不进入共享 Runtime，也不要求前端展示。
 

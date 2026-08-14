@@ -20,6 +20,7 @@
 .shell :global(.language-symbol) svg { fill: rgba(255,255,255,.82); stroke: none; }
 
 .saveStatus { display: inline-flex; align-items: center; gap: 7px; margin: 0 5px; color: rgba(255,255,255,.35); font-size: 10px; }
+.reviewStatus { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(185,144,235,.25); border-radius: 999px; color: #c8abea; background: rgba(143,93,200,.1); font-size: 9px; font-weight: 600; }
 .saveStatus i { width: 6px; height: 6px; border-radius: 50%; background: #d49466; animation: pulse 1s infinite; }
 .saveStatus i.saved { background: #78c99b; animation: none; }
 
@@ -97,22 +98,32 @@
 .imageDropzone > span { display: grid; gap: 6px; }
 .imageDropzone b { color: rgba(255,255,255,.86); font-size: 12px; }
 .imageDropzone small { color: rgba(255,255,255,.36); font-size: 9px; }
-.imageDropzone input, .uploadedImageGrid input { display: none; }
+.imageDropzone input[type="file"], .uploadedImageGrid input[type="file"] { display: none; }
 .uploadedImageGrid { display: grid; grid-template-columns: minmax(230px,.8fr) minmax(280px,1.2fr); gap: 16px; }
 .uploadedImageGrid > section { min-width: 0; display: flex; align-items: center; flex-direction: column; padding: 16px; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: rgba(255,255,255,.018); }
 .uploadedImageGrid header { width: 100%; display: grid; gap: 4px; margin-bottom: 14px; }
 .uploadedImageGrid header b { color: rgba(255,255,255,.84); font-size: 12px; }
 .uploadedImageGrid header small { color: rgba(255,255,255,.34); font-size: 8px; line-height: 1.45; }
 .portraitPreview > div { width: min(220px,100%); aspect-ratio: .66; overflow: hidden; border: 1px solid rgba(255,255,255,.2); border-radius: 10px; background: #160d0f; }
-.portraitPreview > div img { width: 100%; height: 100%; object-fit: cover; }
+.portraitPreview > div img { width: 100%; height: 100%; object-fit: cover; will-change: transform,transform-origin; transition: transform .12s ease-out,transform-origin .12s ease-out; }
+.portraitCrop { position: relative; cursor: grab; touch-action: none; user-select: none; }
+.portraitCrop:active { cursor: grabbing; }
+.portraitCrop:focus-visible { outline: 2px solid rgba(198,166,235,.85); outline-offset: 4px; }
+.portraitCrop img { pointer-events: none; user-select: none; }
 .avatarPreview > div { width: 158px; height: 158px; overflow: hidden; margin: 18px 0 12px; border: 2px solid rgba(255,255,255,.48); border-radius: 50%; background: #160d0f; box-shadow: 0 12px 35px rgba(0,0,0,.24); }
-.avatarPreview > div img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.avatarPreview > div img { width: 100%; height: 100%; object-fit: cover; object-position: center; will-change: transform,transform-origin; transition: transform .12s ease-out,transform-origin .12s ease-out; }
 .avatarCrop { position: relative; cursor: grab; touch-action: none; user-select: none; }
 .avatarCrop:active { cursor: grabbing; }
 .avatarCrop:focus-visible { outline: 2px solid rgba(198,166,235,.85); outline-offset: 4px; }
 .avatarCrop img { pointer-events: none; user-select: none; }
-.avatarCrop i { width: 28px; height: 28px; position: absolute; right: 8px; bottom: 8px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; background: rgba(13,8,9,.58); backdrop-filter: blur(6px); }
-.avatarCrop i::before { content: "↕"; color: rgba(255,255,255,.82); font-size: 13px; font-style: normal; transform: rotate(45deg); }
+.dragHint { position: absolute; right: 50%; bottom: 10px; padding: 5px 9px; border: 1px solid rgba(255,255,255,.18); border-radius: 999px; color: rgba(255,255,255,.8); background: rgba(13,8,9,.65); backdrop-filter: blur(7px); font-size: 7px; line-height: 1; white-space: nowrap; pointer-events: none; transform: translateX(50%); }
+.cropControls { width: min(300px,100%); display: grid; grid-template-columns: 28px minmax(90px,1fr) 28px 36px; align-items: center; gap: 8px; margin: 10px 0 9px; padding: 0; border: 0; color: rgba(255,255,255,.58); }
+.cropControls legend { margin: 0 auto 7px; color: rgba(255,255,255,.52); font-size: 8px; }
+.cropControls input { width: 100%; accent-color: #a975e5; cursor: pointer; }
+.cropControls button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.18); border-radius: 50%; color: rgba(255,255,255,.82); background: rgba(255,255,255,.05); cursor: pointer; font-size: 14px; }
+.cropControls button:hover { border-color: rgba(192,151,239,.58); background: rgba(169,117,229,.16); }
+.cropControls output { color: rgba(255,255,255,.68); font-size: 8px; text-align: right; }
+.portraitPreview > p { max-width: 280px; margin: 0 auto 3px; color: rgba(255,255,255,.36); font-size: 8px; line-height: 1.5; text-align: center; }
 .avatarPreview > p { max-width: 310px; margin: 0 auto 18px; color: rgba(255,255,255,.36); font-size: 9px; line-height: 1.55; text-align: center; }
 .uploadedImageGrid label { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 13px; padding: 0 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.035); cursor: pointer; font-size: 9px; }
 .uploadedImageGrid label:hover { color: #fff; border-color: rgba(194,159,238,.46); background: rgba(160,109,211,.1); }
@@ -127,7 +138,7 @@
 .labelRow b i { margin-left: 4px; color: #e9858e; font-style: normal; }
 .labelRow small { color: rgba(255,255,255,.28); font-size: 8px; }
 .fieldHint { margin-top: -3px; color: rgba(255,255,255,.36); font-size: 9px; line-height: 1.5; }
-.field input, .field textarea, .field select, .importTarget select {
+.field input, .field textarea, .field select {
   width: 100%;
   border: 1px solid rgba(255,255,255,.075);
   border-radius: 9px;
@@ -138,7 +149,7 @@
 .field input, .field select { height: 43px; padding: 0 12px; }
 .field textarea { min-height: 80px; resize: vertical; padding: 11px 12px; line-height: 1.65; }
 .field input::placeholder, .field textarea::placeholder { color: rgba(255,255,255,.2); }
-.field input:focus, .field textarea:focus, .field select:focus, .importTarget select:focus { border-color: rgba(177,136,229,.5); box-shadow: 0 0 0 3px rgba(150,104,207,.09); }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: rgba(177,136,229,.5); box-shadow: 0 0 0 3px rgba(150,104,207,.09); }
 .twoColumns { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; }
 
 .moreSettings { overflow: hidden; border: 1px solid rgba(255,255,255,.095); border-radius: 12px; background: rgba(255,255,255,.017); }
@@ -205,8 +216,8 @@
 .previewColumn > h2 { margin: 0 0 16px; color: rgba(255,255,255,.62); font-size: 14px; text-align: center; }
 .previewClose { display: none; }
 .consumerCardPreview { width: 270px; margin: 0 auto; }
-.consumerCardPreview :global(.tipsy-card) { width: 100%; }
-.consumerCardPreview :global(.tipsy-card-cover) { width: 100%; height: 100%; position: absolute; inset: 0; }
+.consumerCardPreview :global(.character-card) { width: 100%; }
+.consumerCardPreview :global(.character-card-cover) { width: 100%; height: 100%; position: absolute; inset: 0; }
 .staticConsumerCard :global(.card-hit-area) { cursor: default; }
 .staticConsumerCard :global(.card-darken) { background: linear-gradient(180deg,rgba(7,5,6,0) 28%,rgba(8,5,6,.2) 48%,rgba(8,5,6,.96) 100%); }
 .staticConsumerCard :global(.card-copy) { min-height: 39%; max-height: 49%; }
@@ -214,13 +225,8 @@
 .staticConsumerCard :global(.character-tag) { max-width: 40%; }
 .staticConsumerCard :global(.card-tagline) { max-height: 126px; overflow-x: hidden; overflow-y: auto; padding-right: 5px; font-size: 11px; line-height: 1.5; overscroll-behavior: contain; scrollbar-color: rgba(255,255,255,.32) transparent; scrollbar-width: thin; }
 .staticConsumerCard :global(.card-tagline:focus-visible) { outline: 1px solid rgba(205,177,241,.75); outline-offset: 3px; border-radius: 2px; }
-.staticConsumerCard:hover :global(.tipsy-card-cover), .staticConsumerCard:focus-within :global(.tipsy-card-cover) { transform: none; filter: none; }
+.staticConsumerCard:hover :global(.character-card-cover), .staticConsumerCard:focus-within :global(.character-card-cover) { transform: none; filter: none; }
 .staticConsumerCard:hover :global(.card-copy), .staticConsumerCard:focus-within :global(.card-copy) { opacity: 1; }
-.previewNote { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; margin-top: 14px; padding: 11px; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: rgba(255,255,255,.02); }
-.previewNote svg { width: 18px; color: #aa8bd0; }
-.previewNote p { display: grid; gap: 4px; margin: 0; }
-.previewNote b { font-size: 9px; }
-.previewNote span { color: rgba(255,255,255,.3); font-size: 7px; line-height: 1.45; }
 .mobilePreviewButton, .backdrop { display: none; }
 
 .dialogBackdrop { position: fixed; z-index: 200; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(7,4,5,.72); backdrop-filter: blur(10px); }
@@ -240,13 +246,10 @@
 .mappingList > div { display: grid; grid-template-columns: 90px minmax(0,1fr); gap: 9px; padding: 9px 10px; border: 1px solid rgba(255,255,255,.07); border-radius: 8px; background: rgba(255,255,255,.02); }
 .mappingList b { color: #c7a8eb; font-size: 9px; }
 .mappingList span { overflow: hidden; color: rgba(255,255,255,.5); font-size: 9px; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
-.importTarget { display: grid; gap: 7px; margin-top: 16px; color: rgba(255,255,255,.68); font-size: 10px; }
-.importTarget select { height: 40px; padding: 0 10px; }
-.importDialog pre { max-height: 260px; overflow: auto; padding: 13px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; color: rgba(255,255,255,.48); background: rgba(10,7,8,.28); font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 8px; line-height: 1.6; white-space: pre-wrap; }
-.novelRoadmap { display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 12px; margin-top: 17px; padding: 14px; border: 1px solid rgba(185,144,235,.2); border-radius: 10px; background: rgba(143,93,200,.08); }
-.novelRoadmap > svg { width: 29px; color: #b597dc; }
-.novelRoadmap b { font-size: 11px; }
-.novelRoadmap p { margin: 6px 0 0; color: rgba(255,255,255,.4); font-size: 9px; line-height: 1.6; }
+.reservedImportNotice { display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 12px; margin-top: 17px; padding: 14px; border: 1px solid rgba(185,144,235,.2); border-radius: 10px; background: rgba(143,93,200,.08); }
+.reservedImportNotice > svg { width: 29px; color: #b597dc; }
+.reservedImportNotice b { font-size: 11px; }
+.reservedImportNotice p { margin: 6px 0 0; color: rgba(255,255,255,.4); font-size: 9px; line-height: 1.6; }
 .toast { position: fixed; z-index: 300; left: 50%; bottom: 24px; display: flex; align-items: center; gap: 8px; padding: 11px 15px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; color: rgba(255,255,255,.9); background: rgba(39,23,26,.96); box-shadow: 0 18px 55px rgba(0,0,0,.38); transform: translateX(-50%); font-size: 10px; }
 .toast svg { width: 15px; color: #83d0a2; }
 

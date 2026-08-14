@@ -1,4 +1,7 @@
 import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
+import type { CreatorTag } from "./creator-tags";
+
+export type { CreatorTag } from "./creator-tags";
 
 const BASE = "/api/v1/products/plum";
 
@@ -109,6 +112,110 @@ export function uploadCreatorPortrait(file: File) {
   return request<{ status: string; media: CreatorMedia }>("/creator/media/uploads", {
     method: "POST",
     body,
+  });
+}
+
+export function getCreatorTags() {
+  return request<{ status: string; items: CreatorTag[] }>("/creator/tags");
+}
+
+export type CreateCharacterInput = {
+  idempotency_key: string;
+  display_name: string;
+  gender: "male" | "female" | "non_binary";
+  portrait_media_id: string;
+  portrait_position_x: number;
+  portrait_position_y: number;
+  portrait_zoom: number;
+  avatar_position_x: number;
+  avatar_position_y: number;
+  avatar_zoom: number;
+  intro: string;
+  opening_scene: string;
+  character_settings: string;
+  example_dialogues: string;
+  response_rules: string;
+  tag_ids: string[];
+  creator_declared_rating: "general" | "mature";
+  visibility: "private" | "public";
+  adult_confirmed: boolean;
+  rights_confirmed: boolean;
+};
+
+export type CreatedCharacter = {
+  work_id: string;
+  character_id: string;
+  display_name: string;
+  status: string;
+  visibility: "private" | "public";
+};
+
+export type CreationDraftContent = Omit<CreateCharacterInput, "idempotency_key" | "gender"> & {
+  display_name: string;
+  gender: "" | CreateCharacterInput["gender"];
+  portrait_media_id: string;
+  tag_ids: string[];
+};
+
+export type CreationWork = {
+  work_id: string;
+  revision: number;
+  content: CreationDraftContent;
+  portrait_media_id: string | null;
+  portrait_preview_url: string | null;
+  moderation_status: "not_submitted" | "pending_review" | "approved" | "rejected";
+  moderation_categories: string[];
+  published_character_id: string | null;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  updated_at: string;
+};
+
+export function createCreationDraft(content: CreationDraftContent) {
+  return request<{ status: "ok"; work: CreationWork }>("/creator/works", {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function getCreationDraft(workId: string) {
+  return request<{ status: "ok"; work: CreationWork }>(
+    `/creator/works/${encodeURIComponent(workId)}`,
+  );
+}
+
+export function listCreationWorks() {
+  return request<{ status: "ok"; items: CreationWork[] }>("/creator/works");
+}
+
+export function deleteCreationWork(workId: string) {
+  return request<{ status: "ok" }>(`/creator/works/${encodeURIComponent(workId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function updateCreationDraft(workId: string, expectedRevision: number, content: CreationDraftContent) {
+  return request<{ status: "ok"; work: CreationWork }>(
+    `/creator/works/${encodeURIComponent(workId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ expected_revision: expectedRevision, content }),
+    },
+  );
+}
+
+export function publishCreationDraft(workId: string, expectedRevision: number, idempotencyKey: string) {
+  return request<{
+    status: "ok";
+    moderation_status: "pending_review" | "approved" | "rejected";
+    draft: CreationWork;
+    character: CreatedCharacter | null;
+  }>(`/creator/works/${encodeURIComponent(workId)}/publish`, {
+    method: "POST",
+    body: JSON.stringify({
+      expected_revision: expectedRevision,
+      idempotency_key: idempotencyKey,
+    }),
   });
 }
 

@@ -695,11 +695,11 @@ function ChatContent() {
         )}
       </section>
 
-      <header className="tipsy-header chat-site-header">
+      <header className="site-header chat-site-header">
         <div className="header-brand-group"><Brand /><CommunityLink /></div>
-        <div className="tipsy-header-right">
+        <div className="site-header-actions">
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
-          <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create/v1")}><CreateIcon /></button>
+          <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create")}><CreateIcon /></button>
           <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
           {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
           {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>登录</button>}

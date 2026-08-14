@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { TipsyCreateV1 } from "./TipsyCreateV1";
+import { CreateAccessGate } from "../CreateAccessGate";
 
 export const metadata: Metadata = {
   title: "Create a Character — Plum",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function CreateV1Page() {
-  return <TipsyCreateV1 />;
+  return <CreateAccessGate />;
 }

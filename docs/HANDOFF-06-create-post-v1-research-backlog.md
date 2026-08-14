@@ -28,7 +28,7 @@ Create V1 已经收敛为一个以 Tipsy 为主要布局参考的**单角色长�
 - Example Dialogues 与 Response rules 作为选填的高级能力。
 - 只上传一张立绘，头像由立绘裁切产生。
 - 不提供多角色、世界书、用户身份、声音、对话测试和 AI 图片生成。
-- JSON / TXT 当前只做本地导入辅助；小说解析只保留未来入口，不伪造解析结果。
+- Character card JSON 当前只做浏览器本地导入辅助；TXT 和小说解析只保留未来入口，不选择或上传文件，也不伪造解析结果。
 
 ### 2.2 长期方向
 
@@ -193,7 +193,7 @@ V1 已有 Example Dialogues 和自由文本 Response rules。下列结构化控�
 
 ### 9.1 JSON / TXT 正式导入
 
-当前 V1 只在浏览器本地映射 Tavern / SillyTavern JSON 和 TXT。正式能力还需要：
+当前 V1 只在浏览器本地映射 Character card JSON。TXT 后端接口仅预留并返回 `501 creator_text_import_not_implemented`；前端不调用，也不读取 TXT。正式能力还需要：
 
 - 明确支持的 card 版本、字段和编码。
 - 在写入草稿前展示字段映射结果。

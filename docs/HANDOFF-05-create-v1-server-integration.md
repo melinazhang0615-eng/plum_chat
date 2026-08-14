@@ -19,7 +19,7 @@
 
 Create V1 首期只提供**单角色创建 UI**。服务端和数据库不能因此永久固化为“一个作品只能有一个角色”，但首期也不要求提前实现多角色 UI、世界书或用户身份等完整能力。
 
-当前 `/create/v1` 的表单草稿和导入仍在浏览器本地处理；角色立绘已经接入 Create 专用媒体上传和 owner-only 标准化预览 API，作品草稿与发布 API 尚未接入。
+当前 `/create/v1` 同时保留浏览器自动恢复和正式服务端草稿。`Save draft` 通过 `POST/PATCH /creator/works` 保存不完整快照；`Publish` 先保存最新 revision，再调用 `POST /creator/works/{work_id}/publish` 提交同一快照审核。默认审核适配器尚未配置时发布失败关闭，但服务端草稿保持可恢复。
 
 ## 2. 已确认的产品决定
 
@@ -114,7 +114,7 @@ Work / Creation
 
 V1 可以只接受一个 `characters` 元素或只暴露一个 `character` 字段，但数据库迁移不能依赖 `work.character_id` 永远唯一。建议使用作品与角色关联或等价的可扩展关系，并支持 `primary_character_id`。
 
-这只是领域边界建议，不要求采用特定表名。若服务端认为 V1 先使用 `/creator/characters` 更轻，仍需在实现说明中给出未来多角色如何无破坏迁移。
+当前已选择 `/creator/works` 作为创作者资源主语；V1 每个 Work 只有一个主要角色，但合同不把 Work 永久等同于 Character。
 
 ### 4.2 建议端点
 
@@ -137,7 +137,7 @@ V1 可以只接受一个 `characters` 元素或只暴露一个 `character` 字�
 | `POST /creator/media/uploads` | 上传一张角色立绘 | 必要 |
 | `GET /creator/tags?locale=en-US` | 返回可选标签和本地化显示名 | 必要 |
 
-端点命名尚未确认。正式实现前需要在 `/creator/works` 和 `/creator/characters` 两种方向中选定一种，不要同时长期保留两套同义资源。
+端点命名已确认使用 `/creator/works`。旧的直接创建角色入口不再公开挂载，避免绕过草稿 revision 与 Publish 审核流程。
 
 ## 5. 草稿生命周期与审核发布边界
 
@@ -371,7 +371,7 @@ Content-Type: application/json
 
 ### 8.3 发布
 
-本端点暂不定义。审核与发布专项需要先确定状态、可见性、审核范围、同步／异步反馈、重提、申诉、下架、Runtime 激活和版本策略，再共同冻结接口。当前前端 `Create` 只可用于原型完整性提示，不能调用一个临时接口假装已经发布成功。
+完整审核与发布状态机仍按阶段扩展。当前前端 `Publish` 调用 `POST /creator/works/{work_id}/publish`，只提交已经保存的精确 revision。可插拔审核适配器可以返回 `pending_review / approved / rejected`：只有 `approved` 才原子生成公开角色；适配器未配置时返回 503，草稿保持不变。重提、申诉、下架和已发布版本切换仍等待后续专项设计。
 
 ## 9. Runtime / 聊天映射要求
 
@@ -481,13 +481,13 @@ plum.create.v1.single-character
 
 服务端保存失败时，前端必须区分 `Saved locally` 与 `Synced`，不能继续显示“Auto-saved”让用户误以为已保存到账号。
 
-## 13. Tavern JSON / TXT 导入边界
+## 13. Character card JSON / TXT 导入边界
 
-当前 Tavern JSON 和 TXT 导入仍在浏览器本地完成，只负责把内容映射到表单字段。首期服务端不需要实现导入端点，也不应该把未经用户确认的原文件自动上传。
+当前只有 Character card JSON 在浏览器本地完成字段映射。TXT 和小说入口不得选择、读取或上传文件，也不得展示模拟解析结果。
 
-前端完成映射并由用户确认后，服务端只接收普通 Create 字段。小说入口目前只是 roadmap 展示，不得返回假的解析结果或触发真实金币扣费。
+后端仅预留 `POST /creator/imports/text` 合同，当前固定返回 HTTP `501` 和 `creator_text_import_not_implemented`，不读取文件内容、不解析、不持久化。前端当前不调用该接口。
 
-未来小说解析应使用独立异步任务：上传文件 → 解析候选角色、关系、世界信息和剧情节点 → 用户审核 → 写入作品；不属于本次联调。
+未来 TXT/小说解析应使用独立异步任务：上传文件 → 解析候选角色、关系、世界信息和剧情节点 → 用户审核 → 写入作品；不属于本次联调。正式接入云服务前再按厂商手册对齐上传字段、任务字段和结果合同。
 
 ## 14. 多角色兼容约束
 
@@ -519,7 +519,7 @@ plum.create.v1.single-character
 
 ### P0：阻塞正式接口
 
-1. 资源主语使用 `/creator/works` 还是 `/creator/characters`；若选择后者，未来多角色作品如何无破坏迁移。
+1. 已确认资源主语使用 `/creator/works`；后续多角色扩展沿 Work → Characters 关系演进。
 2. 标签 taxonomy、稳定 ID、分组、排序与首批英文显示文案。
 3. 图片正式字节上限；当前实现暂用共享媒体的 8 MiB 配置。
 4. `response_rules` 的正式字符上限。
@@ -557,7 +557,15 @@ plum.create.v1.single-character
 2. 把本地图片上传改为 `media_id`，并保留短期本地恢复。
 3. 用服务端标签替换空的 `TAG_OPTIONS`。
 4. 区分本地已保存、同步中、同步失败和已同步。
-5. Create 按钮在审核发布专项完成前保持未接入状态，不展示虚假的发布成功。
+5. Save draft 不触发审核；Publish 只提交已保存的精确 revision。前端展示 `Under review / Published / Changes rejected`，审核不可用时保留服务端草稿且不展示虚假成功。
+
+### My Studio V1
+
+- `/studio` 列出当前 Member 的 active Work，展示与消费侧一致的立绘卡片及审核状态，不展示 Chat Now。
+- Published 卡片点击封面进入聊天；Draft / Changes rejected 进入编辑；Under review 不开放聊天。
+- More 菜单提供 Edit 和 Delete。Delete 必须二次确认，服务端执行软删除；已发布角色同时退出公开发现并禁止新聊天，历史会话保留。
+- 已发布角色 Edit 保存为未发布修改；再次 Publish 生成不可变的下一 Character Version。审核完成前旧版本继续在线，已有聊天保持原版本绑定，新聊天在审核通过后使用新版本。
+- 本地联调通过 `PLUM_CHARACTER_MODERATION_MOCK_STATUS=approved|pending_review|rejected` 选择确定性审核结果；该配置仅在 `local/development/test + PLUM_DEV_MODE` 生效，生产环境始终忽略。
 
 ### 阶段 D：验收测试
 
