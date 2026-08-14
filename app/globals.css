@@ -468,3 +468,26 @@ svg { display: block; }
   .reference-chat-shell .modal-backdrop { z-index: 80; }
 }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; scroll-behavior:auto!important; } }
+
+/* ===== Welcome dialog (guest onboarding) ===== */
+.welcome-overlay { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(8,8,10,.66); backdrop-filter: blur(10px); }
+.welcome-card { width: min(420px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 22px 24px 20px; border: 1px solid rgba(255,255,255,.1); border-radius: 18px; color: #fff; background: rgba(24,24,27,.97); box-shadow: 0 30px 90px rgba(0,0,0,.5); }
+.welcome-card h1 { margin: 0 0 5px; font-size: 19px; }
+.welcome-card h1 em { margin-right: 5px; font-style: italic; font-weight: 800; }
+.welcome-sub { margin: 0 0 14px; color: rgba(255,255,255,.6); font-size: 10.5px; line-height: 1.5; }
+.welcome-field { display: block; margin-bottom: 13px; }
+.welcome-field > span { display: block; margin-bottom: 8px; color: rgba(255,255,255,.9); font-size: 11.5px; font-weight: 700; }
+.welcome-field > span i { color: rgba(255,255,255,.65); font-size: 9px; font-style: normal; vertical-align: top; }
+.pronoun-row { display: flex; justify-content: space-around; }
+.pronoun-option { display: grid; justify-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
+.pronoun-circle { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; background: rgba(255,255,255,.06); font-size: 19px; line-height: 1; transition: border-color .15s ease, background .15s ease; }
+.pronoun-option:hover .pronoun-circle { background: rgba(255,255,255,.1); }
+.pronoun-option.active .pronoun-circle { border-color: #fff; background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px #fff inset; }
+.pronoun-option b { font-size: 10.5px; font-weight: 700; }
+.welcome-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.welcome-grid button { height: 32px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; color: rgba(255,255,255,.85); background: rgba(255,255,255,.05); cursor: pointer; font-size: 11px; font-weight: 600; transition: background .15s ease, border-color .15s ease; }
+.welcome-grid button:hover { background: rgba(255,255,255,.09); }
+.welcome-grid button.active { border-color: #fff; color: #fff; background: rgba(255,255,255,.12); }
+.welcome-enter { width: min(240px, 100%); height: 40px; display: block; margin: 16px auto 0; border: 0; border-radius: 999px; color: #17171a; background: #fff; font-size: 12.5px; font-weight: 800; cursor: pointer; transition: opacity .15s ease, background .15s ease; }
+.welcome-enter:hover:not(:disabled) { background: #ececec; }
+.welcome-enter:disabled { opacity: .35; cursor: not-allowed; }
