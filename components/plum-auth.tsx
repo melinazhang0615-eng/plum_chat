@@ -112,6 +112,7 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: () => void;
 
   return <div className="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title" onClick={onClose}>
     <form className="welcome-card" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+      <button type="button" className="welcome-close" onClick={onClose} aria-label="Close">×</button>
       <h1 id="welcome-title"><em>Hi,</em> Welcome to Plum</h1>
       <p className="welcome-sub">Tell us more for a better personalized experience. Some content may not be suitable for users of all ages.</p>
 
@@ -146,6 +147,7 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: () => void;
 
       {error && <div className="access-error">{error}</div>}
       <button className="welcome-enter" disabled={!ready || submitting}>{submitting ? "Entering…" : "Enter Plum Now!"}</button>
+      <button type="button" className="welcome-skip" onClick={onClose}>Not now</button>
     </form>
   </div>;
 }

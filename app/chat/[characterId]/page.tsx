@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
-import { EmailSignInDialog, PlumAuthProvider, usePlumAuth } from "@/components/plum-auth";
+import { EmailSignInDialog, PlumAuthProvider, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
 import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
@@ -118,7 +118,7 @@ function ChatContent() {
   const search = useSearchParams();
   const requestedConversationId = search.get("conversation");
   const router = useRouter();
-  const { refresh } = usePlumAuth();
+  const { refresh, context } = usePlumAuth();
   const desktopMessageStageRef = useRef<HTMLElement>(null);
   const mobileMessageStageRef = useRef<HTMLElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -151,6 +151,20 @@ function ChatContent() {
   const [chatStreamingEnabled, setChatStreamingEnabled] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  useEffect(() => {
+    if (loading) return;
+    if (typeof window !== "undefined" && window.localStorage.getItem("plum_welcome_seen")) return;
+    const actor = context?.actor;
+    const isNewUser = actor?.kind === "visitor" || (actor?.kind === "guest" && !actor.profile_complete);
+    if (!isNewUser) return;
+    // New users only, once ever: show Welcome ~2s after the opening line lands in the room.
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem("plum_welcome_seen", "1");
+      setShowWelcome(true);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [loading, context]);
   const [error, setError] = useState<string | null>(null);
   const [showRestart, setShowRestart] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
@@ -879,6 +893,7 @@ function ChatContent() {
         </div>
       )}
       {signInOpen && <EmailSignInDialog onAuthenticated={() => { setSignInOpen(false); void refresh().then(() => void load()); }} onClose={() => setSignInOpen(false)} />}
+      {showWelcome && <WelcomeDialog onComplete={() => { setShowWelcome(false); void refresh(); }} onClose={() => setShowWelcome(false)} />}
     </main>
   );
 }
