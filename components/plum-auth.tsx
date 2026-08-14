@@ -109,6 +109,19 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: () => void;
   </div>;
 }
 
+// A freshly issued guest cookie can lag behind a synchronous top-level
+// navigation, so the OAuth start endpoint races the Set-Cookie and rejects with
+// guest_session_required. Wait until the non-HttpOnly `plum_csrf` sibling (set in
+// the same response as the guest session cookie) is observable before navigating.
+function waitForGuestCookie(timeoutMs = 1500): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const ready = () => document.cookie.split("; ").some((item) => item.startsWith("plum_csrf="));
+    const tick = () => (ready() || Date.now() > deadline ? resolve() : requestAnimationFrame(tick));
+    tick();
+  });
+}
+
 export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void }) {
   const { ensureGuest, refresh, context } = usePlumAuth();
   const [email, setEmail] = useState("");
@@ -156,6 +169,7 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
     setSubmitting(true); setError(null);
     try {
       await ensureGuest();
+      await waitForGuestCookie();
       window.location.assign(`/api/v1/products/plum/auth/oauth/google/start?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`);
     } catch (err) { setError(apiMessage(err)); setSubmitting(false); }
   }
