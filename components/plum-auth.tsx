@@ -165,7 +165,7 @@ function waitForGuestCookie(timeoutMs = 1500): Promise<void> {
   });
 }
 
-export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void }) {
+export function EmailSignInDialog({ onAuthenticated, onClose, returnTo }: { onAuthenticated: (user: AuthUser) => void; onClose: () => void; returnTo?: string }) {
   const { ensureGuest, refresh, context } = usePlumAuth();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -213,7 +213,8 @@ export function EmailSignInDialog({ onAuthenticated, onClose }: { onAuthenticate
     try {
       await ensureGuest();
       await waitForGuestCookie();
-      window.location.assign(`/api/v1/products/plum/auth/oauth/google/start?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      const destination = returnTo ?? (window.location.pathname + window.location.search);
+      window.location.assign(`/api/v1/products/plum/auth/oauth/google/start?return_to=${encodeURIComponent(destination)}`);
     } catch (err) { setError(apiMessage(err)); setSubmitting(false); }
   }
 

@@ -37,7 +37,7 @@
 
 - 主表单先填写 Name / Gender，再创建角色形象，然后填写 Character Intro、Opening Scene 和 Character Settings。
 - Gender 不预设默认值，只提供不可选的提示项；第一期可选值固定为 Male、Female 和 Non-binary。
-- Tavern JSON、TXT 和小说入口不插入主表单，也不常驻为侧栏；统一收进页面右上角的“导入已有内容”动作。
+- Character card JSON、TXT 和小说入口不插入主表单，也不常驻为侧栏；统一收进页面右上角的“导入已有内容”动作。
 - 点击导入动作后按需展开三个入口；移动端使用居中的紧凑弹层，避免占用主表单首屏。
 - Tags 使用最多 5 项的多选控件，不允许自由文本输入；帮助文案需要强调标签会影响搜索和推荐发现。正式标签候选及分类体系由产品后续提供，当前原型只保留选择器结构和旧草稿标签 Chip。
 - 竞品标签截图的逐项转录与后续讨论问题记录在 `docs/COMPETITOR-TAG-REFERENCES.md`，当前不能直接视为 Plum 的正式候选标签。
@@ -62,14 +62,13 @@
 
 ### 导入入口
 
-- Tavern / SillyTavern JSON 作为一级入口，当前原型兼容 `data` 包装或根节点中的 `name`、`description`、`personality`、`scenario`、`first_mes`、`mes_example`、`system_prompt`、`post_history_instructions` 和 `tags`。
-- TXT 作为一级入口，允许创作者选择写入 Character Settings、Character Intro、Opening Scene 或 Example Dialogues。
-- “上传一本小说”作为显眼的未来能力入口；当前只在浏览器本地读取文件并展示文本规模，不假装已经完成角色解析。
+- Character card JSON 作为一级入口，当前原型在浏览器本地兼容 `data` 包装或根节点中的 `name`、`description`、`personality`、`scenario`、`first_mes`、`mes_example`、`system_prompt`、`post_history_instructions` 和 `tags`。
+- TXT 和小说保留显眼的未来能力入口，但当前不允许选择、读取或上传文件，也不展示任何模拟解析结果。
 - 小说解析的目标产物是候选角色、人物关系、世界设定和可互动剧情节点，必须提供创作者确认流程，不能简单把整本小说塞入角色 Prompt。
 
 ### 正式实现约束
 
-- 当前 JSON/TXT 解析和本地草稿仍是前端原型；图片已接入 Create 专用上传与 owner-only 预览 API，但媒体接口仍不代表作品草稿、审核或发布合同。
+- 当前只有 Character card JSON 映射和本地草稿属于前端原型；TXT 后端预留接口 `POST /creator/imports/text` 固定返回 `501 creator_text_import_not_implemented`，不读取、解析或持久化文件。
 - 第一版 UI 固定单角色，但服务端的数据模型不应把作品永久设计成只能拥有一个角色；后续应允许作品关联多个角色并指定主要角色。
 - 小说导入未来应采用“上传 → 异步解析 → 候选结果 → 人工确认 → 创建作品”的独立任务流程，并考虑文件版权、大小限制、解析成本和失败重试。
 

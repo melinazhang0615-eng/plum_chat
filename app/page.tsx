@@ -116,22 +116,22 @@ function FeedContent() {
 
   function openCreate() {
     if (!user) { setPendingTarget("create"); setLoginOpen(true); return; }
-    router.push("/create/v1");
+    router.push("/create");
   }
 
   function afterAuthentication(authenticatedUser: AuthUser) {
     setUser(authenticatedUser); setLoginOpen(false);
     const target = pendingTarget; setPendingTarget(null);
-    if (target === "create") router.push("/create/v1");
+    if (target === "create") router.push("/create");
     else if (target) void enterCharacter(target);
   }
 
   function clearFilters() { setLimitless(false); setGender("All"); setSelectedTags([]); }
 
-  return <main className="feed-shell">
-    <header className="plum-header">
+  return <main className="character-feed-shell">
+    <header className="site-header">
       <div className="header-brand-group"><Brand /><CommunityLink /></div>
-      <div className="plum-header-right">
+      <div className="site-header-actions">
         <button className="header-circle" aria-label="搜索" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
         <button className="header-circle" aria-label="创作" title="创作" onClick={openCreate}><CreateIcon /></button>
         <div className="header-menu-wrap">
@@ -142,7 +142,7 @@ function FeedContent() {
           {walletOpen && <div className="header-dropdown wallet-panel"><small>金币余额</small><strong>{balance.toLocaleString("zh-CN")}</strong><h3>消费记录</h3><p>暂无消费记录</p><button disabled>充值入口 · 后续开放</button></div>}
         </div>}
         {user ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}
+          {accountOpen && <div className="header-dropdown account-menu"><button onClick={() => router.push("/studio")}>My Studio</button><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}
         </div> : <button className="header-circle" aria-label="登录" onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
       </div>
       {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索角色、设定或标签" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="关闭搜索"><CloseIcon /></button><div><small>热门搜索</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
@@ -175,7 +175,7 @@ function FeedContent() {
       </article>)}</div>}
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
-    {loginOpen && <EmailSignInDialog onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
+    {loginOpen && <EmailSignInDialog returnTo={pendingTarget === "create" ? "/create" : undefined} onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
     {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target && target !== "create") void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
   </main>;
 }
