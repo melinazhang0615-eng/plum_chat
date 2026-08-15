@@ -5,23 +5,12 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
-import { EmailSignInDialog, PlumAuthProvider, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
+import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
+import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
 import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
-import { formatCompactCount } from "@/lib/format";
+import { formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
-function formatTime(value?: string) {
-  if (!value) return "Just now";
-  const normalized = value.includes("T") ? value : value.replace(" ", "T") + "+08:00";
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function SearchIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
-}
-function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>; }
-function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
 const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
 const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
 // Guests get an empty model list from the backend (they are locked to guest_free),
@@ -87,9 +76,6 @@ function ScrollLatestIcon() {
 function BackIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>;
 }
-function CloseIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
-}
 function RestartIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 5 15.5M4.8 9V4.5M4.8 9h4.5" /></svg>;
 }
@@ -118,7 +104,7 @@ function messageStatusText(message: ChatMessage) {
   if (status === "streaming") return "正在回复…";
   if (status === "cancelled") return "已停止";
   if (status === "failed") return message.role === "user" ? "发送失败" : "生成失败";
-  return formatTime(message.created_at);
+  return formatMessageTime(message.created_at);
 }
 
 function ChatContent() {
@@ -936,5 +922,5 @@ function ChatContent() {
 }
 
 export default function ChatPage() {
-  return <PlumAuthProvider><ChatContent /></PlumAuthProvider>;
+  return <ChatContent />;
 }

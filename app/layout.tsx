@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PlumAuthProvider } from "@/components/plum-auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN" data-scroll-behavior="smooth">
-      <body>{children}</body>
+      {/* The auth context lives in the layout so a client-side navigation keeps it
+          mounted; mounting it per page refetched /auth/context on every route change. */}
+      <body><PlumAuthProvider>{children}</PlumAuthProvider></body>
     </html>
   );
 }

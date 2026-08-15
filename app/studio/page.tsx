@@ -4,15 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
+import { CreateIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
-
-function CreateIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>;
-}
 
 function statusLabel(work: CreationWork) {
   if (work.moderation_status === "approved") return "Published";

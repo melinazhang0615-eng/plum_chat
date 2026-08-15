@@ -3,7 +3,7 @@
 > 文档编号：HANDOFF-05
 > 状态：草稿与媒体联调评审稿，不是最终数据库设计
 > 更新日期：2026-08-10
-> 前端页面：`/create/v1`
+> 前端页面：`/create`（本文写作时为 `/create/v1`，2026-08-15 合并，旧路由重定向保留）
 > 关联文档：[HANDOFF-04](./HANDOFF-04-create-prototype-decisions.md) · [HANDOFF-06](./HANDOFF-06-create-post-v1-research-backlog.md) · [HANDOFF-07](./HANDOFF-07-mvp-moderation-and-takedown.md) · [COMPETITOR-TAG-REFERENCES](./COMPETITOR-TAG-REFERENCES.md) · [TECH-06](./TECH-06-data-ownership-and-backend-plan.md)
 
 > **2026-08-10 范围决定：**审核与发布流程将作为独立产品议题重新设计。本文只确认 Create V1 表单、草稿、媒体和字段语义；文中出现的 `Create`、Public / Private 和确认项只代表当前 UI 收集的信息，不构成审核状态机、发布端点、上线门槛、拒绝／申诉或下架流程的正式合同。服务端不得依据本文先行固化这些流程。
@@ -19,7 +19,7 @@
 
 Create V1 首期只提供**单角色创建 UI**。服务端和数据库不能因此永久固化为“一个作品只能有一个角色”，但首期也不要求提前实现多角色 UI、世界书或用户身份等完整能力。
 
-当前 `/create/v1` 同时保留浏览器自动恢复和正式服务端草稿。`Save draft` 通过 `POST/PATCH /creator/works` 保存不完整快照；`Publish` 先保存最新 revision，再调用 `POST /creator/works/{work_id}/publish` 提交同一快照审核。默认审核适配器尚未配置时发布失败关闭，但服务端草稿保持可恢复。
+当前 `/create` 同时保留浏览器自动恢复和正式服务端草稿。`Save draft` 通过 `POST/PATCH /creator/works` 保存不完整快照；`Publish` 先保存最新 revision，再调用 `POST /creator/works/{work_id}/publish` 提交同一快照审核。默认审核适配器尚未配置时发布失败关闭，但服务端草稿保持可恢复。
 
 ## 2. 已确认的产品决定
 

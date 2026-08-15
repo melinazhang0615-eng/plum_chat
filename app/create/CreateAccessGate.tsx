@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
-import { EmailSignInDialog, PlumAuthProvider, usePlumAuth } from "@/components/plum-auth";
+import { EmailSignInDialog, usePlumAuth } from "@/components/plum-auth";
 import { logout } from "@/lib/api";
-import { CharacterCreateV1 } from "./v1/CharacterCreateV1";
+import { CharacterCreate } from "./CharacterCreate";
 
 function GateContent() {
   const router = useRouter();
@@ -31,9 +31,9 @@ function GateContent() {
     </main>;
   }
 
-  return <CharacterCreateV1 user={context.actor.user} balance={context.wallet?.balance ?? 0} onSignOut={signOut} />;
+  return <CharacterCreate user={context.actor.user} balance={context.wallet?.balance ?? 0} onSignOut={signOut} />;
 }
 
 export function CreateAccessGate() {
-  return <PlumAuthProvider><GateContent /></PlumAuthProvider>;
+  return <GateContent />;
 }

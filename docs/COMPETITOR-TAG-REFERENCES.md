@@ -199,6 +199,6 @@ The screenshot shows `0/18` and these eighteen choices:
 
 ## Current implementation boundary
 
-- `/create/v1` uses a multi-select UI with a maximum of five tags.
+- `/create` uses a multi-select UI with a maximum of five tags.
 - The available option list remains intentionally empty until the Plum taxonomy is approved.
 - Existing local-draft tags may remain visible as removable chips for migration and discussion.

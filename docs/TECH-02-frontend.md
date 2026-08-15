@@ -22,7 +22,7 @@
 | 类别 | 选择 | 用途 |
 | --- | --- | --- |
 | 应用框架 | Next.js App Router + TypeScript | 路由、服务端首屏、构建和部署 |
-| UI 样式 | 原生 CSS + CSS Variables | 响应式布局和主题 token |
+| UI 样式 | CSS Modules + 全局 CSS Variables | 页面样式隔离在 module，主题 token 走 `:root`，见 2.1 |
 | 服务端状态 | 页面级 React state | Feed、会话、余额与错误状态 |
 | 本地交互状态 | React state | 输入草稿、重开弹层、发送状态 |
 | API 封装 | typed `fetch` wrapper | JSON 请求、统一错误处理 |
@@ -31,6 +31,23 @@
 | API 契约 | 手写 TypeScript 类型 | 对齐当前固定 Plum JSON API |
 
 MVP 不引入 Redux/Zustand/TanStack Query。页面级 state 足以覆盖当前范围；出现跨页面缓存或复杂编辑状态后再升级。
+
+### 2.1 样式归属规则（2026-08-15 确认）
+
+样式写在哪里不是个人偏好，而是有明确归属的：
+
+- **新页面、新组件一律使用 CSS Module**（`xxx.module.css`，与消费它的文件同目录）。类名经过编译期哈希，
+  两个页面同时用 `.card`、`.header` 也不会互相覆盖。
+- **`app/globals.css` 只保留三类内容**：① reset / 元素默认值（`box-sizing`、`body`、`button` 字体继承等）；
+  ② `:root` 上的设计 token（`--ink`、`--muted`、`--line`、`--panel`）；③ 真正跨页面共享的结构，
+  目前是 `.site-header` / `.brand` / `.coin-badge` 这一组顶栏，以及登录与 Welcome 弹层。
+- **判定标准是"有没有第二个消费者"，不是"看起来通不通用"**。只有一个页面在用的样式属于那个页面，
+  哪怕类名叫 `.card`；出现第二个真实消费者时，再连同 DOM 一起抽成 `components/` 下的共享组件，
+  样式随组件走，而不是先把 CSS 提到 globals 再让两处 JSX 各写各的。
+
+globals.css 现在还含有 Feed 页和聊天页的整段样式（`/* Feed */`、`/* Chat … */` 两节），这是 MVP 期
+遗留，不是范例。触碰这两页时可以顺手把相关规则迁到对应的 module，但不要求为迁移单独开一次改动——
+关键是新增样式不再往 globals 里堆，存量会随迭代自然收缩。
 
 ## 3. 路由与渲染策略
 
