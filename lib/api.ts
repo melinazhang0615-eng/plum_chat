@@ -11,6 +11,35 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A request that never came back. `fetch` has no timeout of its own, so a connection that
+ * stays open without answering would otherwise hang the caller — and the UI — forever.
+ * `status` is 0 because no response was ever received.
+ */
+export class ApiTimeoutError extends ApiError {
+  constructor(public readonly timeoutMs: number) {
+    super("request_timeout", 0);
+    this.name = "ApiTimeoutError";
+  }
+}
+
+/** Per-request budgets. A budget must exceed the slowest legitimate server-side path. */
+const DEFAULT_TIMEOUT_MS = 10_000;
+/** Portrait uploads are megabytes over whatever network the creator happens to be on. */
+const UPLOAD_TIMEOUT_MS = 60_000;
+/** Publishing calls the moderation vendor field by field before it answers. */
+const PUBLISH_TIMEOUT_MS = 30_000;
+/**
+ * Streaming only bounds the connect: once headers arrive a reply may legitimately take
+ * minutes. Bounding idle time inside the body is a separate change (it needs to know
+ * whether the backend sends SSE heartbeats).
+ */
+const STREAM_CONNECT_TIMEOUT_MS = 15_000;
+
+const RETRY_BASE_DELAY_MS = 400;
+/** Transient by nature. 429 is excluded: retrying a rate limit is what caused it. */
+const RETRYABLE_STATUS = new Set([408, 500, 502, 503, 504]);
+
 export class StreamProtocolError extends Error {
   constructor(public readonly code: "STREAM_INVALID_EVENT" | "STREAM_TRUNCATED") {
     super(code);
@@ -72,26 +101,96 @@ function cookieValue(name: string) {
   return document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+type TimeoutGuard = {
+  signal: AbortSignal;
+  /** Stop the clock but keep relaying an upstream cancellation. */
+  clearTimer(): void;
+  /** Stop the clock and stop listening to the caller's signal. */
+  release(): void;
+};
+
+/**
+ * A signal that aborts on the caller's own signal *or* after `timeoutMs`, whichever comes
+ * first. Built on AbortController rather than `AbortSignal.any(AbortSignal.timeout())` so
+ * the clock can be stopped early — streaming needs that, and it avoids the newer API.
+ */
+function armTimeout(timeoutMs: number, upstream?: AbortSignal | null): TimeoutGuard {
+  const controller = new AbortController();
+  const relay = () => controller.abort(upstream?.reason);
+  if (upstream) {
+    if (upstream.aborted) controller.abort(upstream.reason);
+    else upstream.addEventListener("abort", relay, { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | null = setTimeout(
+    () => controller.abort(new ApiTimeoutError(timeoutMs)),
+    timeoutMs,
+  );
+  function clearTimer() {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  }
+  return {
+    signal: controller.signal,
+    clearTimer,
+    release() { clearTimer(); upstream?.removeEventListener("abort", relay); },
+  };
+}
+
+/**
+ * The single place that assembles a Plum request. Streaming and non-streaming both go
+ * through it so the CSRF double-submit exists in exactly one implementation.
+ */
+function buildRequestInit(init: RequestInit | undefined, signal: AbortSignal): RequestInit {
   const method = (init?.method ?? "GET").toUpperCase();
   const csrf = !["GET", "HEAD", "OPTIONS"].includes(method) ? cookieValue("plum_csrf") : "";
   const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${BASE}${path}`, {
+  return {
     ...init,
     cache: "no-store",
     credentials: "same-origin",
+    signal,
     headers: {
       ...(init?.body && !hasFormBody ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
       ...init?.headers,
     },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = typeof payload.detail === "string" ? payload.detail : "request_failed";
-    throw new ApiError(detail, response.status);
+  };
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  const payload = await response.json().catch(() => ({})) as { detail?: unknown };
+  throw new ApiError(typeof payload.detail === "string" ? payload.detail : "request_failed", response.status);
+}
+
+async function attempt<T>(path: string, init: RequestInit | undefined, timeoutMs: number): Promise<T> {
+  const guard = armTimeout(timeoutMs, init?.signal);
+  try {
+    const response = await fetch(`${BASE}${path}`, buildRequestInit(init, guard.signal));
+    if (!response.ok) await throwApiError(response);
+    return await response.json().catch(() => ({})) as T;
+  } finally {
+    guard.release();
   }
-  return payload as T;
+}
+
+/** Only a GET can be replayed safely: every other method may have already taken effect. */
+function isRetryable(error: unknown, method: string) {
+  if (method !== "GET") return false;
+  if (error instanceof ApiTimeoutError) return true;
+  if (error instanceof ApiError) return RETRYABLE_STATUS.has(error.status);
+  return error instanceof TypeError; // how fetch reports a network-level failure
+}
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  try {
+    return await attempt<T>(path, init, timeoutMs);
+  } catch (error) {
+    if (init?.signal?.aborted || !isRetryable(error, method)) throw error;
+    // Jitter, so a backend blip does not turn every client's retry into one synchronized wave.
+    const backoff = RETRY_BASE_DELAY_MS * (0.5 + Math.random() * 0.5);
+    await new Promise((resolve) => setTimeout(resolve, backoff));
+    return attempt<T>(path, init, timeoutMs);
+  }
 }
 
 export type CreatorMedia = {
@@ -112,7 +211,7 @@ export function uploadCreatorPortrait(file: File) {
   return request<{ status: string; media: CreatorMedia }>("/creator/media/uploads", {
     method: "POST",
     body,
-  });
+  }, UPLOAD_TIMEOUT_MS);
 }
 
 export function getCreatorTags() {
@@ -216,7 +315,7 @@ export function publishCreationDraft(workId: string, expectedRevision: number, i
       expected_revision: expectedRevision,
       idempotency_key: idempotencyKey,
     }),
-  });
+  }, PUBLISH_TIMEOUT_MS);
 }
 
 export function getBootstrap() {
@@ -381,50 +480,51 @@ export async function sendTurnStream({
   signal: AbortSignal;
   onEvent: (event: TurnStreamEvent) => void;
 }): Promise<void> {
-  const csrf = cookieValue("plum_csrf");
-  const response = await fetch(`${BASE}/conversations/${conversationId}/turns/stream`, {
-    method: "POST",
-    cache: "no-store",
-    credentials: "same-origin",
-    signal,
-    headers: {
-      "Accept": "text/event-stream",
-      "Content-Type": "application/json",
-      ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
-    },
-    body: JSON.stringify({
-      client_message_id: requestId,
-      idempotency_key: requestId,
-      ...(guest ? { action: { kind: "message", text } } : { text }),
-    }),
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as { detail?: unknown };
-    throw new ApiError(typeof payload.detail === "string" ? payload.detail : "request_failed", response.status);
-  }
-  if (!response.body) throw new StreamProtocolError("STREAM_TRUNCATED");
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let terminalSeen = false;
+  // The stream shares the request assembly with `request()` and only diverges once the
+  // response exists: reading the body as SSE instead of awaiting the whole JSON payload.
+  const guard = armTimeout(STREAM_CONNECT_TIMEOUT_MS, signal);
   try {
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      const parsed = parseSseRecords(buffer);
-      buffer = parsed.remainder;
-      for (const record of parsed.records) {
-        const event = toTurnStreamEvent(record);
-        if (!event) continue;
-        if (terminalSeen) throw new StreamProtocolError("STREAM_INVALID_EVENT");
-        onEvent(event);
-        if (["turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) terminalSeen = true;
+    const response = await fetch(
+      `${BASE}/conversations/${conversationId}/turns/stream`,
+      buildRequestInit({
+        method: "POST",
+        headers: { "Accept": "text/event-stream" },
+        body: JSON.stringify({
+          client_message_id: requestId,
+          idempotency_key: requestId,
+          ...(guest ? { action: { kind: "message", text } } : { text }),
+        }),
+      }, guard.signal),
+    );
+    // Headers are in; from here a slow reply is the model thinking, not a stalled connection.
+    guard.clearTimer();
+    if (!response.ok) await throwApiError(response);
+    if (!response.body) throw new StreamProtocolError("STREAM_TRUNCATED");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let terminalSeen = false;
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const parsed = parseSseRecords(buffer);
+        buffer = parsed.remainder;
+        for (const record of parsed.records) {
+          const event = toTurnStreamEvent(record);
+          if (!event) continue;
+          if (terminalSeen) throw new StreamProtocolError("STREAM_INVALID_EVENT");
+          onEvent(event);
+          if (["turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) terminalSeen = true;
+        }
+        if (done) break;
       }
-      if (done) break;
+    } finally {
+      reader.releaseLock();
     }
+    if (!terminalSeen || buffer.trim()) throw new StreamProtocolError("STREAM_TRUNCATED");
   } finally {
-    reader.releaseLock();
+    guard.release();
   }
-  if (!terminalSeen || buffer.trim()) throw new StreamProtocolError("STREAM_TRUNCATED");
 }
