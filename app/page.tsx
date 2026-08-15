@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
 import { ApiError, createConversation, getFeed, logout } from "@/lib/api";
-import { EmailSignInDialog, PlumAuthProvider, usePlumAuth, WelcomeDialog } from "@/components/plum-auth";
+import { EmailSignInDialog, PlumAuthProvider, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, FeedCharacter } from "@/lib/types";
 
@@ -27,7 +27,7 @@ function LoadingState() {
 
 function FeedContent() {
   const router = useRouter();
-  const { context, loading: authLoading, refresh } = usePlumAuth();
+  const { context, loading: authLoading, refresh, ensureGuest } = usePlumAuth();
   const [characters, setCharacters] = useState<FeedCharacter[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -35,8 +35,8 @@ function FeedContent() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<string | "create" | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof MAIN_TABS)[number]>("For You");
   const [limitless, setLimitless] = useState(false);
   const [gender, setGender] = useState("All");
@@ -88,20 +88,24 @@ function FeedContent() {
     if (query.get("search") === "1") setSearchOpen(true);
   }, []);
 
-  async function enterCharacter(characterId: string, skipAuth = false) {
-    if (openingId) return;
-    if (authLoading) return;
-    if (!skipAuth && (!context || context.actor.kind === "visitor" || (context.actor.kind === "guest" && !context.actor.profile_complete))) {
-      setPendingTarget(characterId); setWelcomeOpen(true); return;
-    }
+  async function enterCharacter(characterId: string) {
+    if (openingId || authLoading) return;
     setOpeningId(characterId); setError(null);
     try {
+      // Preferred flow: guests browse and enter freely; the Welcome appears inside the
+      // chat room (~2s after the opening line). This requires the backend to allow a
+      // profile-less guest to create a conversation.
+      if (!context || context.actor.kind === "visitor") await ensureGuest();
       const result = await createConversation(characterId);
       router.push(`/chat/${characterId}?conversation=${result.conversation.id}`);
     } catch (openError) {
       setOpeningId(null);
-      if (openError instanceof ApiError && openError.status === 401) { setPendingTarget(characterId); setWelcomeOpen(true); return; }
-      setError("进入聊天失败了，请稍后再试。");
+      // Fallback while the backend still requires a completed profile first
+      // (403 guest_profile_required): show the Welcome as a pre-chat gate, then retry.
+      if (openError instanceof ApiError && (openError.status === 403 || openError.status === 401)) {
+        setPendingTarget(characterId); setWelcomeOpen(true); return;
+      }
+      setError("Could not start the chat. Please try again later.");
     }
   }
 
@@ -171,8 +175,8 @@ function FeedContent() {
       </article>)}</div>}
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
-    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target === "create") setLoginOpen(true); else if (target) void enterCharacter(target, true); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
     {loginOpen && <EmailSignInDialog returnTo={pendingTarget === "create" ? "/create" : undefined} onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
+    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target && target !== "create") void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
   </main>;
 }
 
