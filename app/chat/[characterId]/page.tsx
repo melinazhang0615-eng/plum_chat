@@ -24,6 +24,14 @@ function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path
 function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
 const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
 const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
+// Guests get an empty model list from the backend (they are locked to guest_free),
+// so this teaser lets them see and tap the premium models; picking one opens the
+// lightweight sign-in and, once authenticated, switches to the model they wanted.
+const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: string; coin_cost: number }[] = [
+  { profile: "fast", display_name: "Fast", coin_cost: 0 },
+  { profile: "balanced", display_name: "Balanced", coin_cost: 0 },
+  { profile: "immersive", display_name: "Immersive", coin_cost: 0 },
+];
 
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
@@ -139,6 +147,8 @@ function ChatContent() {
   const [guestQuota, setGuestQuota] = useState<GuestQuota | null>(null);
   const [guest, setGuest] = useState(false);
   const [signInOpen, setSignInOpen] = useState(false);
+  // The model a guest tapped before signing in; applied automatically after auth.
+  const [pendingModel, setPendingModel] = useState<ModelProfile["profile"] | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -345,6 +355,20 @@ function ChatContent() {
     } finally {
       setSwitchingModel(false);
     }
+  }
+
+  // Guests may open the model list and tap any model; the reveal that it needs an
+  // account is deferred to this point — we remember the choice and open sign-in,
+  // then apply it in the sign-in success handler so the login pays off immediately.
+  function chooseModel(profile: ModelProfile["profile"]) {
+    setComposerPanel(null);
+    setMobileSheet(null);
+    if (guest) {
+      setPendingModel(profile);
+      setSignInOpen(true);
+      return;
+    }
+    void selectModel(profile);
   }
 
   async function submit(event: FormEvent) {
@@ -633,7 +657,7 @@ function ChatContent() {
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
           {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
           <div className="mobile-tool-row">
-            {!guest && <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
@@ -698,8 +722,8 @@ function ChatContent() {
             <section className="mobile-tool-sheet" onClick={(event) => event.stopPropagation()}>
               <div className="mobile-sheet-handle" />
               <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
-              {mobileSheet === "model" && !guest && <div className="mobile-model-list">{models.map((model) => (
-                <button key={model.profile} className={model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => { void selectModel(model.profile); setMobileSheet(null); }}><span><b>{modelName(model)}</b><small>{model.coin_cost} coins / message</small></span><i>{model.profile === conversation.model_profile ? "✓" : ""}</i></button>
+              {mobileSheet === "model" && <div className="mobile-model-list">{(guest ? GUEST_MODEL_TEASER : models).map((model) => (
+                <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
               {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
@@ -818,18 +842,18 @@ function ChatContent() {
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
             {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
-            {!guest && composerPanel === "model" && (
+            {composerPanel === "model" && (
               <div className="composer-popover model-popover">
-                <header><b>Story model</b><small>Choose the model for this conversation</small></header>
-                {models.map((model) => (
+                <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
+                {(guest ? GUEST_MODEL_TEASER : models).map((model) => (
                   <button
                     key={model.profile}
-                    className={model.profile === conversation.model_profile ? "selected" : ""}
+                    className={!guest && model.profile === conversation.model_profile ? "selected" : ""}
                     disabled={sending || switchingModel}
-                    onClick={() => { void selectModel(model.profile); setComposerPanel(null); }}
+                    onClick={() => chooseModel(model.profile)}
                   >
-                    <span><b>{modelName(model)}</b><small>{model.coin_cost} coins / message</small></span>
-                    <i>{model.profile === conversation.model_profile ? "✓" : ""}</i>
+                    <span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span>
+                    <i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i>
                   </button>
                 ))}
               </div>
@@ -850,7 +874,7 @@ function ChatContent() {
               </div>
             )}
             <div className="composer-tools">
-              {!guest && <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>}
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
@@ -892,7 +916,20 @@ function ChatContent() {
           </div>
         </div>
       )}
-      {signInOpen && <EmailSignInDialog onAuthenticated={() => { setSignInOpen(false); void refresh().then(() => void load()); }} onClose={() => setSignInOpen(false)} />}
+      {signInOpen && <EmailSignInDialog onAuthenticated={() => {
+        setSignInOpen(false);
+        const wanted = pendingModel;
+        const convId = conversation?.id;
+        setPendingModel(null);
+        // Reward the sign-in immediately: switch to the model the guest just tapped
+        // on the same (promoted) conversation, then reload so the member UI + kept
+        // context render together. If the switch is unavailable, fall back silently.
+        void (async () => {
+          await refresh();
+          if (wanted && convId) { try { await updateModel(convId, wanted); } catch { /* keep default model */ } }
+          await load();
+        })();
+      }} onClose={() => { setPendingModel(null); setSignInOpen(false); }} />}
       {showWelcome && <WelcomeDialog onComplete={() => { setShowWelcome(false); void refresh(); }} onClose={() => setShowWelcome(false)} />}
     </main>
   );
