@@ -205,8 +205,8 @@
 .previewColumn > h2 { margin: 0 0 16px; color: rgba(255,255,255,.62); font-size: 14px; text-align: center; }
 .previewClose { display: none; }
 .consumerCardPreview { width: 270px; margin: 0 auto; }
-.consumerCardPreview :global(.tipsy-card) { width: 100%; }
-.consumerCardPreview :global(.tipsy-card-cover) { width: 100%; height: 100%; position: absolute; inset: 0; }
+.consumerCardPreview :global(.character-card) { width: 100%; }
+.consumerCardPreview :global(.character-card-cover) { width: 100%; height: 100%; position: absolute; inset: 0; }
 .staticConsumerCard :global(.card-hit-area) { cursor: default; }
 .staticConsumerCard :global(.card-darken) { background: linear-gradient(180deg,rgba(7,5,6,0) 28%,rgba(8,5,6,.2) 48%,rgba(8,5,6,.96) 100%); }
 .staticConsumerCard :global(.card-copy) { min-height: 39%; max-height: 49%; }
@@ -214,7 +214,7 @@
 .staticConsumerCard :global(.character-tag) { max-width: 40%; }
 .staticConsumerCard :global(.card-tagline) { max-height: 126px; overflow-x: hidden; overflow-y: auto; padding-right: 5px; font-size: 11px; line-height: 1.5; overscroll-behavior: contain; scrollbar-color: rgba(255,255,255,.32) transparent; scrollbar-width: thin; }
 .staticConsumerCard :global(.card-tagline:focus-visible) { outline: 1px solid rgba(205,177,241,.75); outline-offset: 3px; border-radius: 2px; }
-.staticConsumerCard:hover :global(.tipsy-card-cover), .staticConsumerCard:focus-within :global(.tipsy-card-cover) { transform: none; filter: none; }
+.staticConsumerCard:hover :global(.character-card-cover), .staticConsumerCard:focus-within :global(.character-card-cover) { transform: none; filter: none; }
 .staticConsumerCard:hover :global(.card-copy), .staticConsumerCard:focus-within :global(.card-copy) { opacity: 1; }
 .previewNote { display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; margin-top: 14px; padding: 11px; border: 1px solid rgba(255,255,255,.07); border-radius: 10px; background: rgba(255,255,255,.02); }
 .previewNote svg { width: 18px; color: #aa8bd0; }

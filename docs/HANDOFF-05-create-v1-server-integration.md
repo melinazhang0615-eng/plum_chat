@@ -64,25 +64,26 @@ Create V1 首期只提供**单角色创建 UI**。服务端和数据库不能因
 
 | UI 字段 | 建议 API 字段 | Create 表单完整度 | 当前前端限制 | 消费者可见性 | 是否参与角色回复 |
 | --- | --- | --- | --- | --- | --- |
-| Name | `name` | 必填 | 1～50 字符 | 首页卡片、聊天等公开界面 | 需要进入角色上下文 |
+| Name | `display_name` | 必填 | 1～40 字符 | 首页卡片、聊天等公开界面 | 需要进入角色上下文 |
 | Gender | `gender` | 必填 | `male` / `female` / `non_binary` | 当前卡片不展示；是否用于筛选待确认 | 是否注入模型上下文待确认 |
 | Portrait | `portrait_media_id` | 必填且只能 1 张 | JPG / JPEG、PNG、WebP、HEIC / HEIF；最终大小限制待确认 | 角色封面及头像来源 | 否 |
-| Avatar crop | `avatar_crop` | 有立绘时必有默认值 | `x`、`y` 均为 0～100，默认 50 | 头像展示 | 否 |
-| Character Intro | `character_intro` | 必填 | 1～500 字符 | 首页角色卡及未来公开资料 | 默认不作为核心私有人设；是否进入 Prompt 待确认 |
+| Portrait position | `portrait_position_x` / `portrait_position_y` | 有立绘时必有默认值 | 均为 0～100，默认 50 | 立绘及封面取景 | 否 |
+| Avatar position | `avatar_position_x` / `avatar_position_y` | 有立绘时必有默认值 | 均为 0～100，默认 50 | 圆形头像取景 | 否 |
+| Character Intro | `intro` | 必填 | 1～500 字符 | 首页角色卡及未来公开资料 | 默认不作为核心私有人设；是否进入 Prompt 待确认 |
 | Opening Scene | `opening_scene` | 必填 | 1～2000 字符 | 进入真实聊天时作为开场内容；首页卡片不展示 | 作为会话开场，不应每轮重复注入 |
-| Character Settings | `character_settings` | 必填 | 1～5000 字符 | 不直接公开 | 是，核心角色设定 |
-| Example Dialogues | `example_dialogues` | 选填 | 0～4000 字符 | 不直接公开 | 是，用于稳定说话方式和反应方式 |
-| Response rules | `response_rules` | 选填 | 原型暂未限制；正式上限待确认 | 不直接公开 | 是，作为回复约束 |
+| Character Settings | `character_settings` | 必填 | 1～12000 字符 | 不直接公开 | 是，核心角色设定 |
+| Example Dialogues | `example_dialogues` | 选填 | 0～6000 字符 | 不直接公开 | 是，用于稳定说话方式和反应方式 |
+| Response rules | `response_rules` | 选填 | 0～3000 字符 | 不直接公开 | 是，作为回复约束 |
 | Tags | `tag_ids` | 至少 1 个 | 最多 5 个；只接受有效 ID | 首页卡片、搜索和推荐 | 否 |
-| Content rating | `content_rating` | 必填 | `limited` / `limitless` | 可用于展示、访问控制和发现 | 不应被理解为绕过平台安全规则 |
+| Content rating | `creator_declared_rating` | 必填 | API 为 `general` / `mature`；UI 展示 Limited / Limitless | 创作者声明；最终访问等级由平台审核决定 | 不应被理解为绕过平台安全规则 |
 | Visibility | `visibility` | 必填 | `public` / `private` | 表达期望发现范围；实际生效规则待专项设计 | 否 |
-| Adult confirmation | `adult_confirmed` | 必须为 `true` | 正式记录方式待审核发布专项设计 | 不展示 | 否 |
-| Rights confirmation | `rights_confirmed` | 必须为 `true` | 正式记录方式待审核发布专项设计 | 不展示 | 否 |
+| Adult confirmation | 暂无 Create API 字段 | UI 完整度要求为 `true` | 正式记录方式待审核发布专项设计 | 不展示 | 否 |
+| Rights confirmation | 暂无 Create API 字段 | UI 完整度要求为 `true` | 正式记录方式待审核发布专项设计 | 不展示 | 否 |
 
 说明：
 
 - “必填”只指当前 Create 表单的完整度规则，不代表已经满足未来审核或发布条件。草稿保存必须允许字段不完整。
-- 字段长度来自当前前端原型，是首轮联调基线；尤其是 `response_rules` 上限仍需双方确认。
+- 字段名、枚举和长度与当前后端 `CreateCharacterRequest` 对齐；前端展示文案可以不同，但提交值不得自行造另一套枚举。
 - API 枚举建议统一使用小写稳定值；前端负责显示 `Limited`、`Non-binary` 等英文标签。
 - 所有字符串在服务端校验前应进行首尾空白处理；只包含空白的必填字段视为未填写。
 
@@ -168,7 +169,7 @@ V1 可以只接受一个 `characters` 元素或只暴露一个 `character` 字�
 建议采用两阶段流程：
 
 1. 前端用 `multipart/form-data` 上传立绘，服务端校验真实文件内容并返回不透明 `media_id`。
-2. 前端在草稿中保存 `portrait_media_id` 和 `avatar_crop`；服务端在同一事务或可靠补偿流程中把媒体标记为已引用。
+2. 前端在草稿中保存 `portrait_media_id`、`portrait_position_x/y` 和 `avatar_position_x/y`；服务端在同一事务或可靠补偿流程中把媒体标记为已引用。
 
 建议请求：
 
@@ -315,21 +316,23 @@ Content-Type: application/json
   "expected_revision": 1,
   "character": {
     "id": "char_01J...",
-    "name": "Luna",
+    "display_name": "Luna",
     "gender": "female",
     "portrait_media_id": "mda_example",
-    "avatar_crop": { "x": 48, "y": 36 },
-    "character_intro": "A stargazer with a secret she cannot outrun.",
+    "portrait_position_x": 50,
+    "portrait_position_y": 50,
+    "avatar_position_x": 48,
+    "avatar_position_y": 36,
+    "intro": "A stargazer with a secret she cannot outrun.",
     "opening_scene": "The observatory doors close behind you...",
     "character_settings": "Luna is observant, guarded, and...",
     "example_dialogues": "{{user}}: ...\n{{char}}: ...",
     "response_rules": "Never decide the user's actions."
   },
   "tag_ids": ["tag_romance", "tag_fantasy"],
-  "content_rating": "limited",
+  "creator_declared_rating": "general",
   "visibility": "public",
-  "adult_confirmed": true,
-  "rights_confirmed": true
+  "idempotency_key": "create-character-01JEXAMPLE"
 }
 ```
 
@@ -344,7 +347,7 @@ Content-Type: application/json
     "primary_character_id": "char_01J...",
     "character": {
       "id": "char_01J...",
-      "name": "Luna",
+      "display_name": "Luna",
       "gender": "female",
       "portrait": {
         "media_id": "mda_example",
@@ -352,18 +355,19 @@ Content-Type: application/json
         "width": 1200,
         "height": 1800
       },
-      "avatar_crop": { "x": 48, "y": 36 },
-      "character_intro": "A stargazer with a secret she cannot outrun.",
+      "portrait_position_x": 50,
+      "portrait_position_y": 50,
+      "avatar_position_x": 48,
+      "avatar_position_y": 36,
+      "intro": "A stargazer with a secret she cannot outrun.",
       "opening_scene": "The observatory doors close behind you...",
       "character_settings": "Luna is observant, guarded, and...",
       "example_dialogues": "{{user}}: ...\n{{char}}: ...",
       "response_rules": "Never decide the user's actions."
     },
     "tag_ids": ["tag_romance", "tag_fantasy"],
-    "content_rating": "limited",
+    "creator_declared_rating": "general",
     "visibility": "public",
-    "adult_confirmed": true,
-    "rights_confirmed": true,
     "updated_at": "2026-08-10T16:04:00+08:00"
   }
 }
@@ -454,21 +458,22 @@ plum.create.v1.single-character
 
 | LocalStorage | API |
 | --- | --- |
-| `name` | `character.name` |
+| `displayName`（旧草稿 `name`） | `display_name` |
 | `gender` | `character.gender` |
-| `intro` | `character.character_intro` |
-| `opening` | `character.opening_scene` |
-| `characterSettings` | `character.character_settings` |
-| `examples` | `character.example_dialogues` |
-| `replyRules` | `character.response_rules` |
+| `intro` | `intro` |
+| `openingScene`（旧草稿 `opening`） | `opening_scene` |
+| `characterSettings` | `character_settings` |
+| `exampleDialogues`（旧草稿 `examples`） | `example_dialogues` |
+| `responseRules`（旧草稿 `replyRules`） | `response_rules` |
 | `image` | 新上传时保存 owner-only `preview_url`；旧草稿可能仍是 Data URL，不得塞进 JSON 草稿接口 |
 | `portraitMediaId` | `character.portrait_media_id` |
-| `avatarPositionX/Y` | `character.avatar_crop.x/y` |
-| `rating` | 小写后写入 `content_rating` |
+| `portraitPositionX/Y` | `portrait_position_x/y` |
+| `avatarPositionX/Y` | `avatar_position_x/y` |
+| `creatorDeclaredRating`（旧草稿 `rating`） | `creator_declared_rating`；旧 Limited / Limitless 分别迁移为 `general` / `mature` |
 | `visibility` | 小写后写入 `visibility` |
-| `tags` | 需要映射成正式 `tag_ids`；不能把旧显示文案直接当 ID |
-| `adultConfirmed` | `adult_confirmed` |
-| `rightsConfirmed` | `rights_confirmed` |
+| `tagIds` | `tag_ids`；旧草稿 `tags` 是显示文案，不得静默当作 ID |
+| `adultConfirmed` | 当前仅用于前端完整度；待审核发布专项确定服务端记录 |
+| `rightsConfirmed` | 当前仅用于前端完整度；待审核发布专项确定服务端记录 |
 
 建议迁移顺序：
 
@@ -563,7 +568,7 @@ plum.create.v1.single-character
 
 - 不完整草稿可以保存；完整度判断不会自动触发发布。
 - 全部必填项完成后，前端与服务端的字段完整度判断一致。
-- Name 50、Intro 500、Opening 2000、Settings 5000、Examples 4000 的边界值前后端一致。
+- Name 40、Intro 500、Opening 2000、Settings 12000、Examples 6000、Response Rules 3000 的边界值前后端一致。
 - Gender 只接受三个稳定枚举。
 - Tags 为 1～5 个有效 ID；重复、停用、未知和超量均有稳定错误。
 - 真实 JPEG、PNG、WebP、HEIC、HEIF 均可上传，并返回浏览器可展示的标准化 JPEG / PNG 预览资源。
