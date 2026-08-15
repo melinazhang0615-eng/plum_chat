@@ -76,35 +76,78 @@ function apiMessage(error: unknown) {
   return messages[error.message] ?? "操作未完成，请检查输入后重试。";
 }
 
+const WELCOME_PRONOUNS: { value: GuestProfile["pronouns"]; label: string; mark: string }[] = [
+  { value: "she_her", label: "She/Her", mark: "♀" },
+  { value: "he_him", label: "He/Him", mark: "♂" },
+  { value: "they_them", label: "They/Them", mark: "✳" },
+];
+const WELCOME_AGE_BANDS = ["Above 26", "24-26", "21-23", "18-20", "14-17", "0-13"] as const;
+const WELCOME_PREFERENCES: { value: NonNullable<GuestProfile["relationship_preference"]>; label: string; emoji: string }[] = [
+  { value: "male", label: "Male", emoji: "👨" },
+  { value: "female", label: "Female", emoji: "👩" },
+  { value: "all", label: "Non-binary", emoji: "🌈" },
+];
+
 export function WelcomeDialog({ onComplete, onClose }: { onComplete: () => void; onClose: () => void }) {
   const { saveWelcome } = usePlumAuth();
-  const [pronouns, setPronouns] = useState<GuestProfile["pronouns"]>("they_them");
-  const [relationshipPreference, setRelationshipPreference] = useState<NonNullable<GuestProfile["relationship_preference"]>>("no_preference");
-  const [adultConfirmed, setAdultConfirmed] = useState(false);
+  const [pronouns, setPronouns] = useState<GuestProfile["pronouns"] | null>(null);
+  const [ageBand, setAgeBand] = useState<string | null>(null);
+  const [relationshipPreference, setRelationshipPreference] = useState<GuestProfile["relationship_preference"]>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ready = Boolean(pronouns && ageBand);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!adultConfirmed || submitting) return;
+    if (!ready || !pronouns || submitting) return;
     setSubmitting(true); setError(null);
     try {
+      // "Enter Plum Now!" grants the 18+ consent stated in the subtitle (saveWelcome sends adult_confirmed).
+      // ageBand is captured for personalization/age-gating but the guest profile has no field for it yet
+      // — TODO(backend): add an age band to GuestProfile so the collected value can be persisted.
       await saveWelcome({ pronouns, relationship_preference: relationshipPreference, genres: [] });
       onComplete();
     } catch (err) { setError(apiMessage(err)); } finally { setSubmitting(false); }
   }
 
-  return <div className="access-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title" onClick={onClose}>
-    <form className="access-card" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭"><span>×</span></button>
-      <span className="access-kicker">WELCOME TO PLUM</span><h1 id="welcome-title">先认识一下你</h1>
-      <p>可先免费体验聊天；注册后可保存进度并获得 1000 金币。</p>
-      <label><span>你希望如何被称呼</span><select value={pronouns} onChange={(event) => setPronouns(event.target.value as GuestProfile["pronouns"])}><option value="she_her">她 / 她</option><option value="he_him">他 / 他</option><option value="they_them">TA / TA</option><option value="other">其他</option></select></label>
-      <label><span>感兴趣的角色</span><select value={relationshipPreference} onChange={(event) => setRelationshipPreference(event.target.value as NonNullable<GuestProfile["relationship_preference"]>)}><option value="no_preference">都可以</option><option value="male">男性角色</option><option value="female">女性角色</option><option value="all">全部</option></select></label>
-      <label className="consent"><input type="checkbox" checked={adultConfirmed} onChange={(event) => setAdultConfirmed(event.target.checked)} /><span>我已年满 18 周岁，并同意体验成人向剧情内容。</span></label>
+  return <div className="welcome-overlay" role="dialog" aria-modal="true" aria-labelledby="welcome-title" onClick={onClose}>
+    <form className="welcome-card" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+      <button type="button" className="welcome-close" onClick={onClose} aria-label="Close">×</button>
+      <h1 id="welcome-title"><em>Hi,</em> Welcome to Plum</h1>
+      <p className="welcome-sub">Tell us more for a better personalized experience. Some content may not be suitable for users of all ages.</p>
+
+      <div className="welcome-field">
+        <span>Which pronoun do you use? <i>✳</i></span>
+        <div className="pronoun-row">
+          {WELCOME_PRONOUNS.map((item) => (
+            <button type="button" key={item.value} className={`pronoun-option${pronouns === item.value ? " active" : ""}`} onClick={() => setPronouns(item.value)}>
+              <span className="pronoun-circle">{item.mark}</span><b>{item.label}</b>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="welcome-field">
+        <span>What&apos;s your age? <i>✳</i></span>
+        <div className="welcome-grid">
+          {WELCOME_AGE_BANDS.map((band) => (
+            <button type="button" key={band} className={ageBand === band ? "active" : ""} onClick={() => setAgeBand(band)}>{band}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="welcome-field">
+        <span>What&apos;s your relationship preference?</span>
+        <div className="welcome-grid">
+          {WELCOME_PREFERENCES.map((pref) => (
+            <button type="button" key={pref.value} className={relationshipPreference === pref.value ? "active" : ""} onClick={() => setRelationshipPreference(pref.value)}>{pref.emoji} {pref.label}</button>
+          ))}
+        </div>
+      </div>
+
       {error && <div className="access-error">{error}</div>}
-      <button className="access-submit" disabled={submitting || !adultConfirmed}>{submitting ? "正在准备…" : "开始免费体验"}</button>
-      <button type="button" className="text-action" onClick={onClose}>暂不体验</button>
+      <button className="welcome-enter" disabled={!ready || submitting}>{submitting ? "Entering…" : "Enter Plum Now!"}</button>
+      <button type="button" className="welcome-skip" onClick={onClose}>Not now</button>
     </form>
   </div>;
 }
