@@ -203,13 +203,48 @@ sequenceDiagram
 API 组：
 
 - `/bootstrap`、`/wallet`
-- `/feed`、`/characters/{id}`
+- `/feed`（`limit` / `cursor` / `q` / `tags` / `gender` / `rating`，见 §8.1）、`/characters/{id}`
 - `/conversations`、`/conversations/{id}/messages`
 - `/conversations/{id}/turns`
+- `/client-events`（浏览器故障上报，见 §10.1）
 
 所有查询和写入均使用 JSON REST；聊天 `POST` 在生成完成后返回 reply、实际扣费、最新余额和幂等状态。
 
 前端只依据稳定错误码执行交互，不依赖中文错误文案。
+
+### 8.1 `GET /feed` 契约
+
+| 参数 | 取值 | 说明 |
+| --- | --- | --- |
+| `limit` | 1–48，默认 24 | 单页条数 |
+| `cursor` | 上一页返回的 `next_cursor` | **不透明**；客户端不解析、不构造 |
+| `q` | ≤64 字符 | 服务端匹配名称、一句话、简介、标签 |
+| `tags` | 重复参数，≤8 个 | **全部命中**才算匹配（与前端 `every` 同义） |
+| `gender` | `male` / `female` / `non_binary` | 匹配 `plum_characters.gender`；不传 = 不筛 |
+| `rating` | `general` / `mature` | 匹配 `plum_characters.content_rating`；不传 = 不筛 |
+
+响应固定为 `{status, items, next_cursor}`，`next_cursor` 为 `null` 表示到底。
+
+- **分页是 keyset 不是 OFFSET**：`WHERE (sort_order, id) > (?, ?)` 走
+  `ix_plum_characters_feed`，第 100 页与第 1 页同价；翻页过程中上架新角色也不会漏条或重复。
+- **游标不透明是弹性来源**：以后加 `sort=popular` 换排序键时，只要新旧 token 各自能解出位置，
+  客户端一行都不用改。`?offset=N` 一旦发出去就锁死实现，而且深页是 O(N)。
+- **错误码**：游标解不开返回 400 `invalid_cursor`（不静默退回第一页，否则"翻着翻着回到开头"
+  永远没人发现）；`tags` 超过 8 个返回 400 `too_many_tags`；`gender`/`rating` 不在枚举内返回
+  400 `invalid_gender` / `invalid_rating`。空值（`cursor=` / `gender=` / `rating=`）一律视为
+  "这一项不筛"，正常返回——`?cursor=${next ?? ""}` 这类客户端写法很常见。**枚举校验放在 API
+  边界**，留给 repository 的 `ValueError` 只剩游标一个来源，错误码才不会互相串味。
+- **缓存分叉**：未筛选、未翻页的第一页对所有人字节相同（响应里没有任何账号态），下发
+  `Cache-Control: public, max-age=60`；带 `q`/`tags`/`gender`/`rating`/`cursor` 的响应是长尾，
+  命中率低且会污染中间层，一律 `no-store`。
+- **`gender` 为空的历史角色筛不到，这是对的**：参考期那批角色早于 `gender` 列，值是 `NULL`，
+  `gender = ?` 永远不命中。补数据的地方是角色表，不是放宽查询条件——为了让筛选"看起来有结果"
+  而把 NULL 也算进某个性别，是在答案里造假。
+- **关联数据整页批量取**：creator / stats / badges 原来是每个角色 3 条附加查询（一页 24 个
+  = 73 次往返），现在固定 4 次。
+- **`q` 第一版是 `ILIKE '%…%'`**，接受全表扫描（当前目录十几条）。升级路径是 `pg_trgm` + GIN
+  索引，届时**接口形状不变**。用户输入里的 `%` `_` `\` 在服务端转义——不转义既是错误结果
+  （搜 `%` 匹配全表），也是让每次按键都退化成全表扫描的放大器。
 
 ## 9. 安全与隐私
 
@@ -233,6 +268,29 @@ API 组：
 - 幂等命中、busy、余额不足、provider/审核错误码。
 
 核心指标：turn 成功率、总延迟、重复请求率、预占释放率、余额不一致数，以及 PRD 定义的 Feed 点击与聊天转化。
+
+### 10.1 客户端故障可见性
+
+服务端日志看不到浏览器里发生的事——`STREAM_TRUNCATED`（流在中途断掉）是核心对话链路唯一的
+健康信号，而它只存在于客户端。`POST /client-events` 补这一个洞，只收故障，不是埋点通道。
+
+- **契约是闭合 schema**（`ClientEvent`，`extra="forbid"`，没有 `props` 之类自由字段）。这不是
+  洁癖：留一个自由字典，前端任何一次改动都可能开始往服务端日志里灌聊天正文，而那种泄漏不可逆。
+  要加字段就显式改契约。字符串字段在校验阶段去掉换行和控制字符，否则浏览器给的值能在单行日志
+  里伪造出额外的字段和行。
+- **鉴权用 `optional_plum_actor` + 同源校验，不要求 CSRF**。游客落地时还没有 CSRF cookie，
+  而最值得看到的故障恰恰是"鉴权本身坏了"的那些；要求 CSRF 会把它们全筛掉。同源校验保证只有
+  我们自己的页面能写入。
+- **限流用进程内固定窗口，刻意不用 `RateLimiter`**：`check_rpm` 每放行一次请求就往 `rpm_hits`
+  插一行，而清理只发生在同一个 key 再回来的时候，仓库里没有任何 sweeper。把基数最高的端点挂
+  上去等于让那张表无界增长。这里保护的是日志量，不是用户可见配额，进程内预算就够。
+- **永远返回 202**，预算用满、事件被丢也一样。客户端因此可以发完就忘，不处理 429、不重试；
+  否则一次后端故障会让每个打开的标签页都开始重试上报，把故障放大一轮。
+- 相同失败在客户端合并成一条并带 `count`，不做随机采样——采样会让"出现 1 次"和"出现 1000 次"
+  都变成"1 次"，而量级正是唯一有用的信息。
+
+第一版落成单行结构化日志（`logger.warning("plum client event ...")`），不建表：先拿到"能看见
+生产故障"这个能力，等确定要按什么维度聚合再谈存储和保留期。前端实现见 TECH-02 §18。
 
 ## 11. 部署拓扑
 

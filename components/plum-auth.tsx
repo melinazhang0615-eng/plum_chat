@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, FormEvent, ReactNode, useContext, useEffect, useState } from "react";
-import { ApiError, createGuestSession, getAuthContext, requestEmailChallenge, updateGuestProfile, verifyEmailChallenge } from "@/lib/api";
+import { createGuestSession, getAuthContext, requestEmailChallenge, updateGuestProfile, verifyEmailChallenge } from "@/lib/api";
+import { errorMessage } from "@/lib/error-messages";
 import type { AuthContext, AuthUser, GuestProfile } from "@/lib/types";
 
 type AuthState = AuthContext | null;
@@ -54,26 +55,10 @@ export function usePlumAuth() {
 }
 
 function apiMessage(error: unknown) {
-  if (!(error instanceof ApiError)) return "暂时无法连接服务，请稍后再试。";
-  const messages: Record<string, string> = {
-    email_provider_unavailable: "邮件服务暂不可用，请稍后再试。",
-    email_challenge_too_frequent: "发送太频繁，请稍后再试。",
-    email_auth_not_configured: "邮箱登录暂未配置，请稍后再试。",
-    email_auth_disabled: "邮箱登录暂未开放。",
-    too_many_login_attempts: "尝试过于频繁，请稍后再试。",
-    origin_required: "请使用正常浏览器页面继续。",
-    guest_chat_disabled: "游客体验暂未开放。",
-    guest_session_required: "登录状态已失效，请刷新页面后重试。",
-    email_code_invalid: "验证码不正确，请重新输入。",
-    email_challenge_expired: "验证码已过期，请重新获取。",
-    email_challenge_attempts_exceeded: "错误次数过多，请重新获取验证码。",
-    email_challenge_invalid: "验证码已失效，请重新获取。",
-    email_challenge_consumed: "该验证码已使用，请重新获取。",
-    email_challenge_actor_mismatch: "登录环境已变化，请重新获取验证码。",
-    identity_target_disabled: "该账号当前不可用，请联系客服。",
-    identity_merge_conflict: "账号合并出现冲突，请联系客服。",
-  };
-  return messages[error.message] ?? "操作未完成，请检查输入后重试。";
+  return errorMessage(error, {
+    offline: "Cannot reach Plum right now. Check your connection and try again.",
+    fallback: "That did not go through. Check your details and try again.",
+  });
 }
 
 const WELCOME_PRONOUNS: { value: GuestProfile["pronouns"]; label: string; mark: string }[] = [
@@ -231,16 +216,16 @@ export function EmailSignInDialog({ onAuthenticated, onClose, returnTo }: { onAu
 
   return <div className="access-overlay" role="dialog" aria-modal="true" aria-labelledby="email-title" onClick={onClose}>
     <form className="access-card" onSubmit={challengeId ? verifyCode : requestCode} onClick={(event) => event.stopPropagation()}>
-      <button type="button" className="dialog-close" onClick={onClose} aria-label="关闭"><span>×</span></button>
-      <span className="access-kicker">ACCOUNT</span><h1 id="email-title">{challengeId ? "输入验证码" : "登录或注册"}</h1>
-      <p>{challengeId ? `验证码已发送至 ${email}` : "使用邮箱登录。首次验证会自动创建账号，并保留你的游客进度。"}</p>
-      {!challengeId && <><label><span>邮箱</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@example.com" required /></label><label><span>称呼（首次注册可选）</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="例如：Alice" /></label></>}
-      {challengeId && <label><span>6 位验证码</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" autoFocus /></label>}
+      <button type="button" className="dialog-close" onClick={onClose} aria-label="Close"><span>×</span></button>
+      <span className="access-kicker">ACCOUNT</span><h1 id="email-title">{challengeId ? "Enter your code" : "Sign in or sign up"}</h1>
+      <p>{challengeId ? `We sent a code to ${email}` : "Sign in with your email. First time here, we create your account and keep the progress you made as a guest."}</p>
+      {!challengeId && <><label><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" placeholder="you@example.com" required /></label><label><span>Name (optional)</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoComplete="nickname" placeholder="e.g. Alice" /></label></>}
+      {challengeId && <label><span>6-digit code</span><input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="123456" autoFocus /></label>}
       {error && <div className="access-error">{error}</div>}
       {!challengeId && context?.capabilities.google_auth && <button type="button" className="text-action" onClick={() => void continueWithGoogle()} disabled={submitting}>Continue with Google</button>}
-      <button className="access-submit" disabled={submitting || (!challengeId ? !email.trim() : code.length !== 6)}>{submitting ? "请稍候…" : challengeId ? "确认登录" : "发送验证码"}</button>
-      {challengeId && <button type="button" className="text-action" onClick={() => void resendCode()} disabled={submitting || resendIn > 0}>{resendIn > 0 ? `重新发送（${resendIn}s）` : "重新发送验证码"}</button>}
-      {challengeId && <button type="button" className="text-action" onClick={() => { setChallengeId(null); setCode(""); setResendIn(0); }}>换一个邮箱</button>}
+      <button className="access-submit" disabled={submitting || (!challengeId ? !email.trim() : code.length !== 6)}>{submitting ? "One moment…" : challengeId ? "Confirm sign-in" : "Send code"}</button>
+      {challengeId && <button type="button" className="text-action" onClick={() => void resendCode()} disabled={submitting || resendIn > 0}>{resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}</button>}
+      {challengeId && <button type="button" className="text-action" onClick={() => { setChallengeId(null); setCode(""); setResendIn(0); }}>Use a different email</button>}
     </form>
   </div>;
 }

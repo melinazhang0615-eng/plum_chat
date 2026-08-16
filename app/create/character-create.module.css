@@ -128,6 +128,15 @@
 .uploadedImageGrid label { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; margin-top: 13px; padding: 0 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.035); cursor: pointer; font-size: 9px; }
 .uploadedImageGrid label:hover { color: #fff; border-color: rgba(194,159,238,.46); background: rgba(160,109,211,.1); }
 .uploadedImageGrid label svg { width: 15px; }
+.restoreNotice { width: min(1440px, calc(100% - 48px)); display: flex; align-items: center; gap: 9px; margin: 0 auto 10px; padding: 10px 13px; border: 1px solid rgba(255,255,255,.1); border-radius: 11px; background: rgba(255,255,255,.025); color: rgba(255,255,255,.5); font-size: 10px; }
+.restoreNotice[data-state="failed"] { border-color: rgba(233,133,142,.3); background: rgba(233,133,142,.07); }
+.restoreNotice svg { width: 15px; flex: none; }
+.restoreNotice[data-state="failed"] svg { color: #e9858e; }
+.restoreNotice p { flex: 1; margin: 0; line-height: 1.5; }
+.restoreNotice p b { color: rgba(255,255,255,.85); }
+.restoreNotice button { height: 30px; flex: none; padding: 0 12px; border: 1px solid rgba(255,255,255,.16); border-radius: 999px; color: rgba(255,255,255,.75); background: rgba(255,255,255,.04); cursor: pointer; font-size: 9px; }
+.restoreNotice button:hover { color: #fff; border-color: rgba(255,255,255,.32); }
+
 .mediaNotice { display: flex; align-items: flex-start; gap: 8px; margin: 13px 0 0; color: rgba(255,255,255,.4); font-size: 9px; line-height: 1.55; }
 .mediaNotice svg { width: 15px; margin-top: 1px; color: #c29a84; }
 .mediaNotice b { color: rgba(255,255,255,.65); }
@@ -284,6 +293,8 @@
   .topbar :global(.brand) { font-size: 21px; }
   .brandGroup > span, .topbar nav > a, .saveStatus { display: none; }
   .pageIntro { width: calc(100% - 26px); min-height: 140px; align-items: flex-start; justify-content: center; flex-direction: column; gap: 11px; }
+  .restoreNotice { width: calc(100% - 26px); align-items: flex-start; flex-wrap: wrap; }
+  .restoreNotice p { flex: 1 1 100%; }
   .pageIntro > div:first-child { max-width: none; }
   .pageIntro h1 { font-size: 20px; line-height: 1.1; }
   .pageIntro p { max-width: 250px; font-size: 9px; line-height: 1.45; }

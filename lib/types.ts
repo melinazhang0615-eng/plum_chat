@@ -15,11 +15,16 @@ export type GuestProfile = {
   genres: string[];
 };
 
+/**
+ * What a guest has left, as the API actually sends it (`get_guest_quota` in
+ * `plum/infrastructure/guest_repository.py`): two remaining counts, no totals and no flag.
+ *
+ * `typed` is a message the guest wrote; `continue` is tapping the character's continuation
+ * button. They are separate budgets, so a guest can run out of one and still have the other.
+ */
 export type GuestQuota = {
-  used_turns: number;
-  limit: number;
-  remaining_turns: number;
-  sign_in_required: boolean;
+  typed_remaining: number;
+  continue_remaining: number;
 };
 
 export type PlumCapabilities = {

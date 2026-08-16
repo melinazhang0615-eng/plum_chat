@@ -1,5 +1,7 @@
 import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
+import { cookieValue } from "./cookies.ts";
+import { reportApiFailure, reportStreamFailure } from "./telemetry.ts";
 
 export type { CreatorTag } from "./creator-tags";
 
@@ -10,6 +12,40 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+/**
+ * A request that never came back. `fetch` has no timeout of its own, so a connection that
+ * stays open without answering would otherwise hang the caller — and the UI — forever.
+ * `status` is 0 because no response was ever received.
+ */
+export class ApiTimeoutError extends ApiError {
+  constructor(public readonly timeoutMs: number) {
+    super("request_timeout", 0);
+    this.name = "ApiTimeoutError";
+  }
+}
+
+/** Per-request budgets. A budget must exceed the slowest legitimate server-side path. */
+const DEFAULT_TIMEOUT_MS = 10_000;
+/** Portrait uploads are megabytes over whatever network the creator happens to be on. */
+const UPLOAD_TIMEOUT_MS = 60_000;
+/** Publishing calls the moderation vendor field by field before it answers. */
+const PUBLISH_TIMEOUT_MS = 30_000;
+/** Streaming bounds the connect separately from the reply: see STREAM_EVENT_IDLE_TIMEOUT_MS. */
+const STREAM_CONNECT_TIMEOUT_MS = 15_000;
+/**
+ * How long the reply may go without a single *event* before we give up on it.
+ *
+ * Only events refresh this. The backend also sends SSE heartbeat comments, and those are
+ * deliberately not progress — they exist so proxies do not kill an idle socket. A provider
+ * that hangs mid-reply keeps pinging, so counting pings as liveness would mean waiting on it
+ * forever. 45s is well past a normal time-to-first-token while still bounded.
+ */
+const STREAM_EVENT_IDLE_TIMEOUT_MS = 45_000;
+
+const RETRY_BASE_DELAY_MS = 400;
+/** Transient by nature. 429 is excluded: retrying a rate limit is what caused it. */
+const RETRYABLE_STATUS = new Set([408, 500, 502, 503, 504]);
 
 export class StreamProtocolError extends Error {
   constructor(public readonly code: "STREAM_INVALID_EVENT" | "STREAM_TRUNCATED") {
@@ -66,32 +102,127 @@ function toTurnStreamEvent(record: SseRecord): TurnStreamEvent | null {
   return { ...(payload as Omit<TurnStreamEvent, "type">), type: record.event } as TurnStreamEvent;
 }
 
-function cookieValue(name: string) {
-  if (typeof document === "undefined") return "";
-  const prefix = `${encodeURIComponent(name)}=`;
-  return document.cookie.split("; ").find((item) => item.startsWith(prefix))?.slice(prefix.length) ?? "";
+type TimeoutGuard = {
+  signal: AbortSignal;
+  /** Stop the clock but keep relaying an upstream cancellation. */
+  clearTimer(): void;
+  /** Start the clock over on a new budget. Streaming swaps its connect budget for an idle one. */
+  resetTimer(timeoutMs: number): void;
+  /** Stop the clock and stop listening to the caller's signal. */
+  release(): void;
+};
+
+/**
+ * A signal that aborts on the caller's own signal *or* after `timeoutMs`, whichever comes
+ * first. Built on AbortController rather than `AbortSignal.any(AbortSignal.timeout())` so
+ * the clock can be stopped early — streaming needs that, and it avoids the newer API.
+ */
+function armTimeout(timeoutMs: number, upstream?: AbortSignal | null): TimeoutGuard {
+  const controller = new AbortController();
+  const relay = () => controller.abort(upstream?.reason);
+  if (upstream) {
+    if (upstream.aborted) controller.abort(upstream.reason);
+    else upstream.addEventListener("abort", relay, { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  function clearTimer() {
+    if (timer !== null) { clearTimeout(timer); timer = null; }
+  }
+  function resetTimer(budgetMs: number) {
+    clearTimer();
+    timer = setTimeout(() => controller.abort(new ApiTimeoutError(budgetMs)), budgetMs);
+  }
+  resetTimer(timeoutMs);
+  return {
+    signal: controller.signal,
+    clearTimer,
+    resetTimer,
+    release() { clearTimer(); upstream?.removeEventListener("abort", relay); },
+  };
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * The single place that assembles a Plum request. Streaming and non-streaming both go
+ * through it so the CSRF double-submit exists in exactly one implementation.
+ */
+function buildRequestInit(init: RequestInit | undefined, signal: AbortSignal): RequestInit {
   const method = (init?.method ?? "GET").toUpperCase();
   const csrf = !["GET", "HEAD", "OPTIONS"].includes(method) ? cookieValue("plum_csrf") : "";
   const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${BASE}${path}`, {
+  return {
     ...init,
     cache: "no-store",
     credentials: "same-origin",
+    signal,
     headers: {
       ...(init?.body && !hasFormBody ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
       ...init?.headers,
     },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = typeof payload.detail === "string" ? payload.detail : "request_failed";
-    throw new ApiError(detail, response.status);
+  };
+}
+
+async function throwApiError(response: Response): Promise<never> {
+  const payload = await response.json().catch(() => ({})) as { detail?: unknown };
+  throw new ApiError(typeof payload.detail === "string" ? payload.detail : "request_failed", response.status);
+}
+
+async function attempt<T>(path: string, init: RequestInit | undefined, timeoutMs: number): Promise<T> {
+  const guard = armTimeout(timeoutMs, init?.signal);
+  try {
+    const response = await fetch(`${BASE}${path}`, buildRequestInit(init, guard.signal));
+    if (!response.ok) await throwApiError(response);
+    return await response.json().catch(() => ({})) as T;
+  } finally {
+    guard.release();
   }
-  return payload as T;
+}
+
+/**
+ * Only a GET can be replayed safely here: every other method may have already taken
+ * effect, and this helper cannot tell "never arrived" from "arrived, reply lost".
+ *
+ * The turn stream is the one exception, and it earns it server-side rather than here —
+ * see `sendTurnStream`.
+ */
+function isRetryable(error: unknown, method: string) {
+  if (method !== "GET") return false;
+  if (error instanceof ApiTimeoutError) return true;
+  if (error instanceof ApiError) return RETRYABLE_STATUS.has(error.status);
+  return error instanceof TypeError; // how fetch reports a network-level failure
+}
+
+/** A transport failure, as opposed to the server answering with a considered refusal. */
+function isTransportFailure(error: unknown) {
+  if (error instanceof ApiTimeoutError) return true;
+  if (error instanceof StreamProtocolError) return error.code === "STREAM_TRUNCATED";
+  if (error instanceof ApiError) return RETRYABLE_STATUS.has(error.status);
+  return error instanceof TypeError; // how fetch reports a network-level failure
+}
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+  try {
+    return await attempt<T>(path, init, timeoutMs);
+  } catch (error) {
+    // A cancelled request is the caller getting what it asked for, not a failure to report.
+    if (init?.signal?.aborted) throw error;
+    if (!isRetryable(error, method)) {
+      reportApiFailure({ method, path, error });
+      throw error;
+    }
+    // Jitter, so a backend blip does not turn every client's retry into one synchronized wave.
+    const backoff = RETRY_BASE_DELAY_MS * (0.5 + Math.random() * 0.5);
+    await new Promise((resolve) => setTimeout(resolve, backoff));
+    try {
+      return await attempt<T>(path, init, timeoutMs);
+    } catch (retried) {
+      // Reported once, on the outcome the caller actually sees. `attempt=2` is what tells us
+      // the retry did not help, which is the difference between a blip and an outage.
+      if (!init?.signal?.aborted) reportApiFailure({ method, path, error: retried, attempt: 2 });
+      throw retried;
+    }
+  }
 }
 
 export type CreatorMedia = {
@@ -112,7 +243,7 @@ export function uploadCreatorPortrait(file: File) {
   return request<{ status: string; media: CreatorMedia }>("/creator/media/uploads", {
     method: "POST",
     body,
-  });
+  }, UPLOAD_TIMEOUT_MS);
 }
 
 export function getCreatorTags() {
@@ -216,7 +347,7 @@ export function publishCreationDraft(workId: string, expectedRevision: number, i
       expected_revision: expectedRevision,
       idempotency_key: idempotencyKey,
     }),
-  });
+  }, PUBLISH_TIMEOUT_MS);
 }
 
 export function getBootstrap() {
@@ -276,8 +407,47 @@ export function logout() {
   return request<{ status: string }>("/auth/session/current", { method: "DELETE" });
 }
 
-export function getFeed() {
-  return request<{ status: string; items: FeedCharacter[] }>("/feed");
+export const FEED_PAGE_LIMIT = 24;
+/** Server rejects more than this many `tags` with 400 `too_many_tags`; the UI stops at the same number. */
+export const FEED_TAGS_MAX = 8;
+const FEED_QUERY_MAX = 64;
+
+export type FeedPage = { status: string; items: FeedCharacter[]; next_cursor: string | null };
+
+/** `plum_characters.gender` 的取值；服务端认这三个，别的一律 400 `invalid_gender`。 */
+export type FeedGender = "male" | "female" | "non_binary";
+/** `plum_characters.content_rating` 的取值；`mature` 就是 UI 上的 Limitless。 */
+export type FeedRating = "general" | "mature";
+
+/**
+ * One page of the public catalog. Search and tag filtering happen **on the server**: filtering
+ * client-side can only ever search the page already downloaded, which is a wrong answer rather
+ * than a slow one as soon as the catalog outgrows one page.
+ *
+ * `cursor` is opaque on purpose — pass back whatever `next_cursor` the previous page returned and
+ * nothing else. It encodes a keyset position, so a future change of ordering needs no client change.
+ */
+export function getFeed(
+  params: {
+    q?: string;
+    tags?: string[];
+    gender?: FeedGender | null;
+    rating?: FeedRating | null;
+    cursor?: string | null;
+    limit?: number;
+  } = {},
+  init?: RequestInit,
+) {
+  const search = new URLSearchParams();
+  const term = (params.q ?? "").trim();
+  // Truncate rather than let a pasted paragraph come back as a 422 the user cannot act on.
+  if (term) search.set("q", term.slice(0, FEED_QUERY_MAX));
+  for (const tag of params.tags ?? []) if (tag.trim()) search.append("tags", tag.trim());
+  if (params.gender) search.set("gender", params.gender);
+  if (params.rating) search.set("rating", params.rating);
+  if (params.cursor) search.set("cursor", params.cursor);
+  search.set("limit", String(params.limit ?? FEED_PAGE_LIMIT));
+  return request<FeedPage>(`/feed?${search.toString()}`, init);
 }
 
 export function createConversation(characterId: string) {
@@ -381,50 +551,95 @@ export async function sendTurnStream({
   signal: AbortSignal;
   onEvent: (event: TurnStreamEvent) => void;
 }): Promise<void> {
-  const csrf = cookieValue("plum_csrf");
-  const response = await fetch(`${BASE}/conversations/${conversationId}/turns/stream`, {
-    method: "POST",
-    cache: "no-store",
-    credentials: "same-origin",
-    signal,
-    headers: {
-      "Accept": "text/event-stream",
-      "Content-Type": "application/json",
-      ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
-    },
-    body: JSON.stringify({
-      client_message_id: requestId,
-      idempotency_key: requestId,
-      ...(guest ? { action: { kind: "message", text } } : { text }),
-    }),
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as { detail?: unknown };
-    throw new ApiError(typeof payload.detail === "string" ? payload.detail : "request_failed", response.status);
-  }
-  if (!response.body) throw new StreamProtocolError("STREAM_TRUNCATED");
+  /**
+   * Whether any reply text reached the caller. Once it has, a retry is off the table: the
+   * second attempt would start its own reply from the top and the UI would end up showing
+   * two halves of two different answers stitched together.
+   */
+  let deliveredDelta = false;
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let terminalSeen = false;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      const parsed = parseSseRecords(buffer);
-      buffer = parsed.remainder;
-      for (const record of parsed.records) {
-        const event = toTurnStreamEvent(record);
-        if (!event) continue;
-        if (terminalSeen) throw new StreamProtocolError("STREAM_INVALID_EVENT");
-        onEvent(event);
-        if (["turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) terminalSeen = true;
+  async function runAttempt(): Promise<void> {
+    // The stream shares the request assembly with `request()` and only diverges once the
+    // response exists: reading the body as SSE instead of awaiting the whole JSON payload.
+    const guard = armTimeout(STREAM_CONNECT_TIMEOUT_MS, signal);
+    try {
+      const response = await fetch(
+        `${BASE}/conversations/${conversationId}/turns/stream`,
+        buildRequestInit({
+          method: "POST",
+          headers: { "Accept": "text/event-stream" },
+          body: JSON.stringify({
+            client_message_id: requestId,
+            idempotency_key: requestId,
+            ...(guest ? { action: { kind: "message", text } } : { text }),
+          }),
+        }, guard.signal),
+      );
+      // Headers are in, so the connect budget is spent. What replaces it is an idle budget:
+      // a slow reply is the model thinking, but a reply that never says anything again is a
+      // stall we still have to escape. Only events refresh it — heartbeat comments do not.
+      guard.resetTimer(STREAM_EVENT_IDLE_TIMEOUT_MS);
+      if (!response.ok) await throwApiError(response);
+      if (!response.body) throw new StreamProtocolError("STREAM_TRUNCATED");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let terminalSeen = false;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          buffer += decoder.decode(value, { stream: !done });
+          const parsed = parseSseRecords(buffer);
+          buffer = parsed.remainder;
+          for (const record of parsed.records) {
+            const event = toTurnStreamEvent(record);
+            if (!event) continue;
+            if (terminalSeen) throw new StreamProtocolError("STREAM_INVALID_EVENT");
+            onEvent(event);
+            guard.resetTimer(STREAM_EVENT_IDLE_TIMEOUT_MS);
+            if (event.type === "message.delta") deliveredDelta = true;
+            if (["turn.completed", "turn.cancelled", "turn.failed"].includes(event.type)) terminalSeen = true;
+          }
+          if (done) break;
+        }
+      } finally {
+        reader.releaseLock();
       }
-      if (done) break;
+      if (!terminalSeen || buffer.trim()) throw new StreamProtocolError("STREAM_TRUNCATED");
+    } finally {
+      guard.release();
     }
-  } finally {
-    reader.releaseLock();
   }
-  if (!terminalSeen || buffer.trim()) throw new StreamProtocolError("STREAM_TRUNCATED");
+
+  try {
+    await runAttempt();
+  } catch (error) {
+    // Unlike `request()`, replaying this POST is safe: the server keys the turn on
+    // `idempotency_key`, and a run that ended without an answer refunds its reservation
+    // before it will re-arm, so the user is charged once no matter how many attempts run.
+    // It caps attempts server-side too, which is what makes this bounded rather than a
+    // loop that could multiply our provider bill against a failing upstream.
+    //
+    // Only transport failures qualify. A `turn.failed` *event* is the server's considered
+    // answer and arrives through `onEvent`, not as a throw — the user decides whether to
+    // resend that one, and resending it now works instead of colliding with the spent key.
+    if (signal.aborted) throw error;
+    if (deliveredDelta || !isTransportFailure(error)) {
+      reportStreamFailure({ error, retrying: false });
+      throw error;
+    }
+    // Reported before the retry, not instead of it: the retry rate is the health signal, and a
+    // failure that a retry papered over is invisible otherwise.
+    reportStreamFailure({ error, retrying: true });
+    // Jitter, so a backend blip does not turn every client's retry into one synchronized wave.
+    await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_DELAY_MS * (0.5 + Math.random() * 0.5)));
+    if (signal.aborted) throw error;
+    try {
+      await runAttempt();
+    } catch (retried) {
+      if (!signal.aborted) reportStreamFailure({ error: retried, retrying: false });
+      throw retried;
+    }
+  }
 }

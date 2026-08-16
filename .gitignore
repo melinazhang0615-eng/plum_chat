@@ -3,3 +3,11 @@ node_modules/
 .env*.local
 npm-debug.log*
 *.tsbuildinfo
+
+# Playwright MCP scratch output (screenshots, traces). The tool writes here on its own;
+# nothing in it is a build input or worth reviewing in a diff.
+.playwright-mcp/
+
+# Local-only working notes and scratch files. Deliberately not shared: this is where
+# work-in-progress tracking lives, and it is per-machine, not per-repo.
+.local/

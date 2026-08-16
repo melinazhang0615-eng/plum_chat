@@ -4,11 +4,14 @@ import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
+import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, createCreationDraft, getCreationDraft, getCreatorTags, publishCreationDraft, updateCreationDraft, uploadCreatorPortrait } from "@/lib/api";
 import type { CreationDraftContent, CreationWork, CreatorTag } from "@/lib/api";
+import { HEADER_LABELS, LANGUAGE_MENU } from "@/lib/copy";
 import { normalizeCreatorTagIds } from "@/lib/creator-tags";
+import { errorMessage } from "@/lib/error-messages";
 import type { AuthUser } from "@/lib/types";
-import styles from "./character-create-v1.module.css";
+import styles from "./character-create.module.css";
 
 type Rating = "Limited" | "Limitless";
 type Visibility = "Public" | "Private";
@@ -85,9 +88,6 @@ function Icon({ name }: { name: "upload" | "file" | "book" | "save" | "reset" | 
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function SearchIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.3 4.3"/></svg>; }
-function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>; }
-function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z"/><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z"/></svg>; }
 
 function Field({ label, required, hint, count, children }: { label: string; required?: boolean; hint?: string; count?: string; children: React.ReactNode }) {
   return <label className={styles.field}>
@@ -124,27 +124,27 @@ function normalizeZoom(value: unknown) {
 }
 
 function portraitUploadError(error: unknown) {
-  if (!(error instanceof ApiError)) return "Could not upload this portrait. Please try again.";
-  if (error.status === 401) return "Sign in before uploading a character portrait.";
-  if (error.message === "media_too_large") return "This image is too large. Choose a smaller file.";
-  if (error.message === "media_kind_unsupported") return "Use a JPG, PNG, WebP, HEIC, or HEIF image.";
-  if (error.message === "media_decode_failed") return "This image could not be read. Try exporting it again.";
-  if (error.message === "rate_limited") return "Too many uploads. Wait a moment and try again.";
-  return "Could not upload this portrait. Please try again.";
+  return errorMessage(error, {
+    fallback: "Could not upload this portrait. Please try again.",
+    byStatus: { 401: "Sign in before uploading a character portrait." },
+  });
 }
 
+/**
+ * Every sentence here has to say what happened to the draft, because "it failed" and "you lost
+ * your work" are the two things a creator wants told apart. That is why these stay call-site
+ * copy rather than moving into the shared code dictionary.
+ */
 function characterCreationError(error: unknown) {
-  if (!(error instanceof ApiError)) return "The publish request could not be completed. Your saved draft is unchanged.";
-  if (error.status === 401) return "Sign in before publishing this character. Your browser draft is still saved.";
-  if (error.message === "character_moderation_not_configured") return "Character review is not available yet. Nothing was published, and your server draft remains saved.";
-  if (error.message === "character_moderation_rejected") return "The character was not approved. Nothing was created; review the content before trying again.";
-  if (error.message === "character_moderation_review_required") return "Automatic review could not make a final decision. Nothing was created in this version.";
-  if (error.message === "character_confirmation_required") return "Both creator confirmations are required before creation.";
-  if (error.message === "character_tag_invalid") return "One or more selected Tags are no longer available. Refresh the Tag list and try again.";
-  if (error.message === "creator_media_not_claimable") return "This portrait can no longer be used. Upload it again before creating the character.";
-  if (error.status === 409) return "This creation request conflicts with an earlier attempt. Edit the draft or try again.";
-  if (error.status === 422) return "Some character fields are invalid or too long. Review the form and try again.";
-  return "The creation service is temporarily unavailable. Nothing was created, and your browser draft is still saved.";
+  return errorMessage(error, {
+    offline: "The publish request could not be completed. Your saved draft is unchanged.",
+    fallback: "The creation service is temporarily unavailable. Nothing was created, and your browser draft is still saved.",
+    byStatus: {
+      401: "Sign in before publishing this character. Your browser draft is still saved.",
+      409: "This creation request conflicts with an earlier attempt. Edit the draft or try again.",
+      422: "Some character fields are invalid or too long. Review the form and try again.",
+    },
+  });
 }
 
 function mapCharacterCardJson(raw: unknown): Partial<CharacterDraft> {
@@ -171,7 +171,7 @@ function mapCharacterCardJson(raw: unknown): Partial<CharacterDraft> {
   };
 }
 
-export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser; balance: number; onSignOut: () => Promise<void> }) {
+export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; balance: number; onSignOut: () => Promise<void> }) {
   const router = useRouter();
   const [draft, setDraft] = useState<CharacterDraft>(EMPTY_DRAFT);
   const [hydrated, setHydrated] = useState(false);
@@ -193,6 +193,13 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
   const [createdCharacterId, setCreatedCharacterId] = useState("");
   const [workId, setWorkId] = useState("");
   const [workRevision, setWorkRevision] = useState(0);
+  /**
+   * Restoring a `?work_id=` draft is the one moment where an unhandled failure creates a
+   * *second* work: the fetch fails, `workId` stays empty, and the next save takes the
+   * "create" branch. So a pending or failed restore is an explicit blocking state, not a toast.
+   */
+  const [restore, setRestore] = useState<{ workId: string; state: "loading" | "failed" } | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [moderationStatus, setModerationStatus] = useState<CreationWork["moderation_status"]>("not_submitted");
   const [languageOpen, setLanguageOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -262,8 +269,11 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
     if (!user) return;
     const requestedWorkId = new URLSearchParams(window.location.search).get("work_id")?.trim();
     if (!requestedWorkId || requestedWorkId === workId) return;
+    let abandoned = false;
+    setRestore({ workId: requestedWorkId, state: "loading" });
     void getCreationDraft(requestedWorkId)
       .then(({ work }) => {
+        if (abandoned) return;
         const content = work.content;
         setWorkId(work.work_id);
         setWorkRevision(work.revision);
@@ -293,9 +303,14 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
           rightsConfirmed: content.rights_confirmed,
         });
         setSaved(true);
+        setRestore(null);
       })
-      .catch(() => showToast("Could not restore this server draft"));
-  }, [user, workId]);
+      .catch(() => {
+        if (abandoned) return;
+        setRestore({ workId: requestedWorkId, state: "failed" });
+      });
+    return () => { abandoned = true; };
+  }, [user, workId, restoreAttempt]);
 
   useEffect(() => {
     if (!hydrated || !tagOptions.length) return;
@@ -372,6 +387,9 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
   }
 
   async function saveDraftToServer(): Promise<CreationWork> {
+    // Last-resort guard. The buttons are disabled and both callers check too, but saving
+    // while a restore is unresolved is exactly what forks the draft into two works.
+    if (restore) throw new Error("draft_restore_incomplete");
     const content = currentDraftContent();
     setSavingDraft(true);
     try {
@@ -393,7 +411,7 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
   }
 
   async function saveServerDraft() {
-    if (savingDraft || creatingCharacter) return;
+    if (savingDraft || creatingCharacter || restore) return;
     try {
       await saveDraftToServer();
       showToast("Draft saved to My Studio");
@@ -419,6 +437,18 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
     window.history.replaceState(null, "", url);
     setDialog(null);
     showToast("Draft reset");
+  }
+
+  /**
+   * The escape hatch out of a failed restore: drop the `work_id` so the next save creates a
+   * new work *because the user chose to*, rather than silently behind a dismissed toast.
+   */
+  function abandonRestore() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("work_id");
+    window.history.replaceState(null, "", url);
+    setRestore(null);
+    showToast("Editing as a new draft");
   }
 
   async function handleImage(event: ChangeEvent<HTMLInputElement>) {
@@ -447,7 +477,7 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
   }
 
   async function publishCharacter() {
-    if (!canCreate || creatingCharacter) return;
+    if (!canCreate || creatingCharacter || restore) return;
     const input = currentDraftContent();
     const signature = JSON.stringify(input);
     if (creationAttempt.current?.signature !== signature) {
@@ -566,8 +596,8 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
         <button className="header-circle" aria-label="Search" onClick={() => router.push("/?search=1")}><SearchIcon/></button>
         <button className="header-circle" aria-label="Create" title="Create" aria-current="page"><CreateIcon/></button>
         <div className="header-menu-wrap">
-          <button className="header-circle language-symbol" aria-label="Change language" aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon/></button>
-          {languageOpen && <div className="header-dropdown language-menu"><button>简体中文</button><button className="selected">English <span>✓</span></button><small>More languages are coming.</small></div>}
+          <button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon/></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}
         </div>
         <div className="header-menu-wrap">
           <button className="coin-button" onClick={() => setWalletOpen((open) => !open)} aria-label={`Coin balance ${balance}`}><span>✦</span><strong>{balance.toLocaleString("en-US")}</strong></button>
@@ -602,6 +632,17 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
       </div>
     </section>
     {importOpen && <button className={styles.importMenuBackdrop} aria-label="Dismiss import menu" onClick={() => setImportOpen(false)}/>}
+
+    {restore && <section className={styles.restoreNotice} role={restore.state === "failed" ? "alert" : "status"} data-state={restore.state}>
+      <Icon name="info"/>
+      {restore.state === "loading"
+        ? <p>Loading your saved draft…</p>
+        : <>
+            <p><b>This saved draft could not be loaded.</b> Saving is paused so a second copy is not created in My Studio.</p>
+            <button type="button" onClick={() => setRestoreAttempt((attempt) => attempt + 1)}>Try again</button>
+            <button type="button" onClick={abandonRestore}>Edit as a new draft</button>
+          </>}
+    </section>}
 
     <section className={styles.workspace}>
       <div className={styles.editorColumn}>
@@ -727,8 +768,8 @@ export function CharacterCreateV1({ user, balance, onSignOut }: { user: AuthUser
         <footer className={styles.actionBar}>
           <button onClick={() => router.push("/studio?view=drafts")}><Icon name="box"/><span>Draft Box</span></button>
           <button onClick={() => setDialog("reset")}><Icon name="reset"/><span>Reset</span></button>
-          <button disabled={savingDraft || creatingCharacter} onClick={() => void saveServerDraft()}><Icon name="save"/><span>{savingDraft ? "Saving…" : "Save draft"}</span></button>
-          <button className={styles.createButton} disabled={!canCreate || creatingCharacter || savingDraft} onClick={() => void publishCharacter()}>{creatingCharacter ? "Submitting…" : "Publish"}</button>
+          <button disabled={savingDraft || creatingCharacter || Boolean(restore)} onClick={() => void saveServerDraft()}><Icon name="save"/><span>{savingDraft ? "Saving…" : "Save draft"}</span></button>
+          <button className={styles.createButton} disabled={!canCreate || creatingCharacter || savingDraft || Boolean(restore)} onClick={() => void publishCharacter()}>{creatingCharacter ? "Submitting…" : "Publish"}</button>
         </footer>
       </div>
 

@@ -1,5 +1,17 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap");
 
+/*
+ * Scope rule — before adding anything here, read docs/TECH-02-frontend.md §2.1.
+ *
+ * This file is for three things only: the reset, the `:root` design tokens, and structures with a
+ * genuine second consumer (today: the top bar, and the sign-in / Welcome dialogs). Everything a
+ * single page owns belongs in that page's `*.module.css`, where the class name is hashed and
+ * cannot collide with another page's `.card`.
+ *
+ * The "Feed" and "Chat" sections below are MVP-era leftovers that predate the rule. They are not
+ * the example to follow; they shrink as those pages get touched.
+ */
+
 :root {
   --ink: #fff;
   --muted: rgba(255,255,255,.62);
