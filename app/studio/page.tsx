@@ -7,6 +7,7 @@ import { CommunityLink } from "@/components/community-link";
 import { CreateIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
+import { errorMessage } from "@/lib/error-messages";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
@@ -40,7 +41,7 @@ export default function StudioPage() {
         router.replace("/?login=1");
         return;
       }
-      setError("Could not load My Studio. Try again.");
+      setError(errorMessage(loadError, { fallback: "Could not load My Studio. Try again." }));
     } finally {
       setLoading(false);
     }
@@ -81,8 +82,8 @@ export default function StudioPage() {
       await deleteCreationWork(deleteTarget.work_id);
       setItems((current) => current.filter((item) => item.work_id !== deleteTarget.work_id));
       setDeleteTarget(null);
-    } catch {
-      setError("Could not delete this Studio item. Try again.");
+    } catch (deleteError) {
+      setError(errorMessage(deleteError, { fallback: "Could not delete this Studio item. Try again." }));
     } finally {
       setDeleting(false);
     }

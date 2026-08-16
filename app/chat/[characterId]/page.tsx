@@ -8,7 +8,9 @@ import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
 import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
-import { formatCompactCount, formatMessageTime } from "@/lib/format";
+import { ACCOUNT_MENU, CHAT_LABELS, GUEST_BANNER, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, guestQuotaLabel, messageStatusLabel } from "@/lib/copy";
+import { errorMessage, messageForCode } from "@/lib/error-messages";
+import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
 const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
@@ -21,6 +23,12 @@ const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: stri
   { profile: "balanced", display_name: "Balanced", coin_cost: 0 },
   { profile: "immersive", display_name: "Immersive", coin_cost: 0 },
 ];
+
+/**
+ * "Interrupted" is the honest answer whenever the backend did not name a reason: the client
+ * cannot tell "never arrived" from "arrived, reply lost", so it must not claim either.
+ */
+const SEND_FALLBACK = "The message or the reply was interrupted. Please try again.";
 
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
@@ -99,12 +107,7 @@ function getMessageStatus(message: ChatMessage): MessageStatus {
 }
 
 function messageStatusText(message: ChatMessage) {
-  const status = getMessageStatus(message);
-  if (status === "sending") return "发送中…";
-  if (status === "streaming") return "正在回复…";
-  if (status === "cancelled") return "已停止";
-  if (status === "failed") return message.role === "user" ? "发送失败" : "生成失败";
-  return formatMessageTime(message.created_at);
+  return messageStatusLabel(getMessageStatus(message), message) ?? formatMessageTime(message.created_at);
 }
 
 function ChatContent() {
@@ -213,7 +216,7 @@ function ChatContent() {
         router.replace("/");
         return;
       }
-      setError("聊天暂时加载失败，请返回后重试。");
+      setError(errorMessage(loadError, { fallback: "This chat could not be loaded. Go back and try again." }));
     } finally {
       setLoading(false);
     }
@@ -337,7 +340,7 @@ function ChatContent() {
     } catch (modelError) {
       setConversation(previous);
       if (redirectIfUnauthorized(modelError)) return;
-      setError("模型切换失败，请重试。");
+      setError(errorMessage(modelError, { fallback: "Could not switch the model. Please try again." }));
     } finally {
       setSwitchingModel(false);
     }
@@ -362,7 +365,7 @@ function ChatContent() {
     const content = text.trim();
     if (!conversation || !content || sending || switchingModel || (!guest && !selectedModel)) return;
     if (!guest && selectedModel && balance < selectedModel.coin_cost) {
-      setError("金币余额不足，暂时无法发送这条消息。");
+      setError("Not enough coins to send this message.");
       return;
     }
     const requestId = crypto.randomUUID();
@@ -428,7 +431,7 @@ function ChatContent() {
                 ? { ...item, status: "failed" }
                 : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
               setText((current) => current || content);
-              setError("回复生成失败，请重试。");
+              setError(messageForCode(streamEvent.code, "The reply could not be generated. Please try again."));
             }
           },
         });
@@ -454,11 +457,11 @@ function ChatContent() {
         : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
       if (sendError instanceof ApiError && sendError.message === "guest_sign_in_required") {
         setSignInOpen(true);
-        setError("免费体验次数已用完，登录后可继续并保存故事进度。");
+        setError(errorMessage(sendError, { fallback: SEND_FALLBACK }));
         return;
       }
       if (redirectIfUnauthorized(sendError)) return;
-      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息或回复中断，请再试一次。");
+      setError(errorMessage(sendError, { offline: SEND_FALLBACK, fallback: SEND_FALLBACK }));
       setText((current) => current || content);
     } finally {
       if (activeTurnRef.current?.requestId === requestId) activeTurnRef.current = null;
@@ -481,7 +484,7 @@ function ChatContent() {
       router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}`);
     } catch (restartError) {
       if (redirectIfUnauthorized(restartError)) return;
-      setError("重新开始失败，请稍后再试。");
+      setError(errorMessage(restartError, { fallback: "Could not restart the story. Please try again later." }));
     } finally {
       setRestarting(false);
     }
@@ -508,7 +511,7 @@ function ChatContent() {
   const visibleLikeCount = viewerState.like_count + Number(viewerHasLiked) - Number(viewerState.has_liked);
   const visibleFavoriteCount = viewerState.favorite_count + Number(viewerHasFavorited) - Number(viewerState.is_favorite);
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
-  const guestQuotaLabel = guestQuota ? `免费体验：还可发送 ${guestQuota.remaining_turns} 条` : "免费体验聊天";
+  const quotaLabel = guestQuotaLabel(guestQuota);
 
   function scrollToLatest() {
     nearBottomRef.current = { desktop: true, mobile: true };
@@ -554,7 +557,7 @@ function ChatContent() {
     } catch (likeError) {
       setLiked(null);
       if (redirectIfUnauthorized(likeError)) return;
-      setError("点赞状态保存失败，请重试。");
+      setError(errorMessage(likeError, { fallback: "Could not save your like. Please try again." }));
     } finally {
       setReactionBusy(false);
     }
@@ -580,7 +583,7 @@ function ChatContent() {
     } catch (favoriteError) {
       setFavorited(null);
       if (redirectIfUnauthorized(favoriteError)) return;
-      setError("收藏状态保存失败，请重试。");
+      setError(errorMessage(favoriteError, { fallback: "Could not save this favorite. Please try again." }));
     } finally {
       setReactionBusy(false);
     }
@@ -591,18 +594,18 @@ function ChatContent() {
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
       <div className="chat-world-overlay" />
 
-      <section className="mobile-chat-shell" aria-label={`${displayName} 移动端对话`}>
+      <section className="mobile-chat-shell" aria-label={CHAT_LABELS.room(displayName)}>
         <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />
         <div className="mobile-chat-shade" />
 
         <header className="mobile-chat-header">
-          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label="返回角色列表"><BackIcon /></button>
-          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label="查看角色资料">
+          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label={CHAT_LABELS.back}><BackIcon /></button>
+          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label={CHAT_LABELS.showProfile}>
             <span><Image src={cover} alt="" fill sizes="34px" /></span>
             <b>{displayName}</b>
             {primaryBadge && <i title={primaryBadge.display_name}>✦</i>}
           </button>
-          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
+          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label={CHAT_LABELS.more}><MoreIcon /></button>
         </header>
 
         <section
@@ -636,18 +639,18 @@ function ChatContent() {
               </div>
             );})}
           </div>
-          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label={CHAT_LABELS.scrollLatest}><ScrollLatestIcon /></button>}
         </section>
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-          {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
+          {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{quotaLabel}<span>{GUEST_BANNER.savePrompt}</span></button>}
           <div className="mobile-tool-row">
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label={CHAT_LABELS.pinned}><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
-            <button type="button" className="mobile-inspire-btn" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
+            <button type="button" className="mobile-inspire-btn" aria-label={CHAT_LABELS.inspiration} onClick={useInspiration}><InspirationIcon /></button>
             <textarea
               ref={mobileTextareaRef}
               value={text}
@@ -667,19 +670,19 @@ function ChatContent() {
               className={`mobile-send${canStopGeneration ? " is-stopping" : ""}`}
               disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
               onClick={canStopGeneration ? stopGeneration : undefined}
-              aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+              aria-label={canStopGeneration ? CHAT_LABELS.stop : CHAT_LABELS.send}
             >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
           </form>
         </section>
 
         {showMobileProfile && (
           <div className="mobile-sheet-backdrop" onClick={() => setShowMobileProfile(false)}>
-            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={`${displayName} 角色资料`}>
+            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={CHAT_LABELS.profile(displayName)}>
               <div className="mobile-sheet-handle" />
               <header className="mobile-profile-actions">
                 <button className="mobile-cid">CID: {character.id.replace("char_", "").slice(0, 5)}… <span>▣</span></button>
-                <button onClick={() => void shareCharacter()} aria-label="分享角色"><ShareIcon /></button>
-                <button onClick={() => setShowMobileProfile(false)} aria-label="关闭角色资料"><CloseIcon /></button>
+                <button onClick={() => void shareCharacter()} aria-label={CHAT_LABELS.share}><ShareIcon /></button>
+                <button onClick={() => setShowMobileProfile(false)} aria-label={CHAT_LABELS.closeProfile}><CloseIcon /></button>
               </header>
               <div className="mobile-profile-scroll">
                 <section className="mobile-profile-hero">
@@ -722,12 +725,12 @@ function ChatContent() {
       <header className="site-header chat-site-header">
         <div className="header-brand-group"><Brand /><CommunityLink /></div>
         <div className="site-header-actions">
-          <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
-          <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create")}><CreateIcon /></button>
-          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
-          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
-          {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>登录</button>}
-          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
+          <button className="header-circle" aria-label={HEADER_LABELS.search} onClick={() => router.push("/?search=1")}><SearchIcon /></button>
+          <button className="header-circle" aria-label={HEADER_LABELS.create} title={HEADER_LABELS.create} onClick={() => router.push("/create")}><CreateIcon /></button>
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}</div>
+          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}</div>}
+          {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>{HEADER_LABELS.signIn}</button>}
+          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label={HEADER_LABELS.account}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}</div>}
         </div>
       </header>
 
@@ -736,7 +739,7 @@ function ChatContent() {
         <div className="history-list">{history.map((item) => {
           const active = item.id === conversation.id;
           const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
-          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={`打开与 ${item.character.display_name} 的聊天`}>
+          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={CHAT_LABELS.openConversation(item.character.display_name)}>
             <span className="history-avatar"><Image src={avatar} alt="" fill sizes="42px" /></span>
             <span className="history-copy"><strong>{item.character.display_name}</strong><small>{item.character.tagline}</small></span>
           </button>;
@@ -745,12 +748,12 @@ function ChatContent() {
 
       <div className={`reference-chat-workspace${showProfile ? "" : " profile-collapsed"}`}>
         {showProfile && (
-          <aside ref={roleProfileRef} className="role-profile" aria-label={`${displayName} 角色资料`}>
+          <aside ref={roleProfileRef} className="role-profile" aria-label={CHAT_LABELS.profile(displayName)}>
             <Image className="role-profile-cover" src={cover} alt={`${displayName} profile`} fill priority sizes="350px" />
             <div className="profile-image-shade" />
             <div className="profile-top-actions">
-              <button className="profile-icon-action" aria-label="分享角色" title="分享角色" onClick={() => void shareCharacter()}><ShareIcon /></button>
-              <button className="profile-icon-action" aria-label="收起角色资料" title="收起角色资料" onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
+              <button className="profile-icon-action" aria-label={CHAT_LABELS.share} title={CHAT_LABELS.share} onClick={() => void shareCharacter()}><ShareIcon /></button>
+              <button className="profile-icon-action" aria-label={CHAT_LABELS.closeProfile} title={CHAT_LABELS.closeProfile} onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
             </div>
 
             <div className="profile-hover-content">
@@ -776,11 +779,11 @@ function ChatContent() {
         <section className="reference-conversation">
           <header className="reference-conversation-toolbar">
             <div className="conversation-character-status">
-              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label="显示角色资料"><Image src={cover} alt={displayName} fill sizes="48px" /></button>
+              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label={CHAT_LABELS.showProfile}><Image src={cover} alt={displayName} fill sizes="48px" /></button>
               <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
+              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label={CHAT_LABELS.settings}><MoreIcon /></button>
             </div>
             {showChatMenu && (
               <div className="chat-settings-popover">
@@ -822,12 +825,12 @@ function ChatContent() {
                 </div>
               );})}
             </div>
-            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label={CHAT_LABELS.scrollLatest}><ScrollLatestIcon /></button>}
           </section>
 
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-            {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
+            {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{quotaLabel}<span>{GUEST_BANNER.savePrompt}</span></button>}
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
@@ -860,11 +863,11 @@ function ChatContent() {
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
-              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
+              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label={CHAT_LABELS.inspiration} onClick={useInspiration}><InspirationIcon /></button>
               <textarea
                 ref={desktopTextareaRef}
                 value={text}
@@ -884,7 +887,7 @@ function ChatContent() {
                 className={`reference-send${canStopGeneration ? " is-stopping" : ""}`}
                 disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
                 onClick={canStopGeneration ? stopGeneration : undefined}
-                aria-label={canStopGeneration ? "停止生成" : "发送消息"}
+                aria-label={canStopGeneration ? CHAT_LABELS.stop : CHAT_LABELS.send}
               >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
             </form>
           </section>

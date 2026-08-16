@@ -1,0 +1,42 @@
+/*
+ * Feed 页专属样式。globals.css 里那一整段 Feed 规则是 MVP 遗留，新增样式一律写在这里
+ * （TECH-02 §2.1）。存量规则在触碰到时可以顺手迁过来，但不为迁移单独开改动。
+ */
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 8px;
+}
+
+.loadMore button {
+  min-width: 168px;
+  padding: 11px 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, opacity 0.16s ease;
+}
+
+.loadMore button:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
+.loadMore button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 翻页失败时列表还在，横幅不能把已加载的内容顶掉，所以单独一条窄提示。 */
+.loadMoreError {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}

@@ -1,3 +1,12 @@
+/**
+ * A coin balance, grouped for reading. One helper because the two wallet panels called
+ * `toLocaleString` with two different locales — and one of them used both in the same panel,
+ * so the header pill and the row under it could disagree about how to write the same number.
+ */
+export function formatCoins(balance: number) {
+  return balance.toLocaleString("en-US");
+}
+
 export function formatCompactCount(value: number) {
   return new Intl.NumberFormat("en", {
     notation: "compact",

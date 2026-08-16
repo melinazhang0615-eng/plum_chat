@@ -7,7 +7,9 @@ import { CommunityLink } from "@/components/community-link";
 import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, createCreationDraft, getCreationDraft, getCreatorTags, publishCreationDraft, updateCreationDraft, uploadCreatorPortrait } from "@/lib/api";
 import type { CreationDraftContent, CreationWork, CreatorTag } from "@/lib/api";
+import { HEADER_LABELS, LANGUAGE_MENU } from "@/lib/copy";
 import { normalizeCreatorTagIds } from "@/lib/creator-tags";
+import { errorMessage } from "@/lib/error-messages";
 import type { AuthUser } from "@/lib/types";
 import styles from "./character-create.module.css";
 
@@ -122,27 +124,27 @@ function normalizeZoom(value: unknown) {
 }
 
 function portraitUploadError(error: unknown) {
-  if (!(error instanceof ApiError)) return "Could not upload this portrait. Please try again.";
-  if (error.status === 401) return "Sign in before uploading a character portrait.";
-  if (error.message === "media_too_large") return "This image is too large. Choose a smaller file.";
-  if (error.message === "media_kind_unsupported") return "Use a JPG, PNG, WebP, HEIC, or HEIF image.";
-  if (error.message === "media_decode_failed") return "This image could not be read. Try exporting it again.";
-  if (error.message === "rate_limited") return "Too many uploads. Wait a moment and try again.";
-  return "Could not upload this portrait. Please try again.";
+  return errorMessage(error, {
+    fallback: "Could not upload this portrait. Please try again.",
+    byStatus: { 401: "Sign in before uploading a character portrait." },
+  });
 }
 
+/**
+ * Every sentence here has to say what happened to the draft, because "it failed" and "you lost
+ * your work" are the two things a creator wants told apart. That is why these stay call-site
+ * copy rather than moving into the shared code dictionary.
+ */
 function characterCreationError(error: unknown) {
-  if (!(error instanceof ApiError)) return "The publish request could not be completed. Your saved draft is unchanged.";
-  if (error.status === 401) return "Sign in before publishing this character. Your browser draft is still saved.";
-  if (error.message === "character_moderation_not_configured") return "Character review is not available yet. Nothing was published, and your server draft remains saved.";
-  if (error.message === "character_moderation_rejected") return "The character was not approved. Nothing was created; review the content before trying again.";
-  if (error.message === "character_moderation_review_required") return "Automatic review could not make a final decision. Nothing was created in this version.";
-  if (error.message === "character_confirmation_required") return "Both creator confirmations are required before creation.";
-  if (error.message === "character_tag_invalid") return "One or more selected Tags are no longer available. Refresh the Tag list and try again.";
-  if (error.message === "creator_media_not_claimable") return "This portrait can no longer be used. Upload it again before creating the character.";
-  if (error.status === 409) return "This creation request conflicts with an earlier attempt. Edit the draft or try again.";
-  if (error.status === 422) return "Some character fields are invalid or too long. Review the form and try again.";
-  return "The creation service is temporarily unavailable. Nothing was created, and your browser draft is still saved.";
+  return errorMessage(error, {
+    offline: "The publish request could not be completed. Your saved draft is unchanged.",
+    fallback: "The creation service is temporarily unavailable. Nothing was created, and your browser draft is still saved.",
+    byStatus: {
+      401: "Sign in before publishing this character. Your browser draft is still saved.",
+      409: "This creation request conflicts with an earlier attempt. Edit the draft or try again.",
+      422: "Some character fields are invalid or too long. Review the form and try again.",
+    },
+  });
 }
 
 function mapCharacterCardJson(raw: unknown): Partial<CharacterDraft> {
@@ -594,8 +596,8 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
         <button className="header-circle" aria-label="Search" onClick={() => router.push("/?search=1")}><SearchIcon/></button>
         <button className="header-circle" aria-label="Create" title="Create" aria-current="page"><CreateIcon/></button>
         <div className="header-menu-wrap">
-          <button className="header-circle language-symbol" aria-label="Change language" aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon/></button>
-          {languageOpen && <div className="header-dropdown language-menu"><button>简体中文</button><button className="selected">English <span>✓</span></button><small>More languages are coming.</small></div>}
+          <button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon/></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}
         </div>
         <div className="header-menu-wrap">
           <button className="coin-button" onClick={() => setWalletOpen((open) => !open)} aria-label={`Coin balance ${balance}`}><span>✦</span><strong>{balance.toLocaleString("en-US")}</strong></button>

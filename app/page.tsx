@@ -1,31 +1,52 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
-import { ApiError, createConversation, getFeed, logout } from "@/lib/api";
+import { ApiError, FEED_TAGS_MAX, createConversation, getFeed, logout } from "@/lib/api";
+import type { FeedGender, FeedRating } from "@/lib/api";
 import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
-import { formatCompactCount } from "@/lib/format";
+import { ACCOUNT_MENU, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
+import { errorMessage } from "@/lib/error-messages";
+import { formatCoins, formatCompactCount } from "@/lib/format";
 import type { AuthUser, FeedCharacter } from "@/lib/types";
+import styles from "./page.module.css";
 
 const MAIN_TABS = ["For You", "Trending", "Latest", "Popular", "Following"] as const;
 const HOT_SEARCHES = ["Slow burn", "Enemies to lovers", "Fantasy", "Protective", "After hours"];
+/** 按键即请求会把每个字都变成一次全表 ILIKE；300ms 是"打完一个词"和"感觉不到延迟"的交点。 */
+const SEARCH_DEBOUNCE_MS = 300;
+const TAG_VOCABULARY_MAX = 12;
+/**
+ * 菜单文案 → `plum_characters.gender` 的取值。`All` 是"这一项不参与筛选"，不是一个取值，
+ * 所以它的 value 是 `null` 而不是空串——空串会被当成"筛一个叫空串的性别"发出去。
+ */
+const GENDER_OPTIONS: ReadonlyArray<{ label: string; value: FeedGender | null }> = [
+  { label: "All", value: null },
+  { label: "Female", value: "female" },
+  { label: "Male", value: "male" },
+  { label: "Other", value: "non_binary" },
+];
 
 function FilterIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M8 12h8M10.5 17h3" /></svg>; }
 function MessageIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5h14v10H9l-4 3v-13Z" /></svg>; }
 function LoginIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.8-4 2.9-6 6.5-6s5.7 2 6.5 6" /></svg>; }
 
 function LoadingState() {
-  return <div className="feed-loading" aria-label="正在加载角色"><i /><span>Loading characters…</span></div>;
+  return <div className="feed-loading" aria-label="Loading characters"><i /><span>Loading characters…</span></div>;
 }
 
 function FeedContent() {
   const router = useRouter();
   const { context, loading: authLoading, refresh, ensureGuest } = usePlumAuth();
   const [characters, setCharacters] = useState<FeedCharacter[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [tagVocabulary, setTagVocabulary] = useState<string[]>([]);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
@@ -42,38 +63,101 @@ function FeedContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  /** 去抖之后真正发给服务端的词；`searchText` 只驱动输入框。 */
+  const [query, setQuery] = useState("");
   const [languageOpen, setLanguageOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
 
-  const availableTags = useMemo(() => Array.from(new Set(characters.flatMap((character) => character.tags))).slice(0, 12), [characters]);
+  // 标签清单来自"未筛选那一页"，而不是当前列表：一旦按标签筛过，列表里只剩共现的标签，
+  // 面板会把用户刚选中的那个标签也弄丢，于是选了就取消不掉。选中项始终并进来兜底。
+  const availableTags = useMemo(
+    () => Array.from(new Set([...tagVocabulary, ...selectedTags])),
+    [tagVocabulary, selectedTags],
+  );
+  // 搜索和标签已经在服务端做完了，这里只剩几个 tab 的本地后处理。
+  // 已知取舍：这些 tab 只作用于**已加载的页**，因为 Trending/Latest 靠 badge 文案猜、
+  // Popular 排的 `interaction_count` 在服务端没有对应索引（`heat_count` 从不更新）。
+  // 它们目前是占位交互，不值得为此先定一套 `sort=` 契约。
   const visibleCharacters = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
-    let items = characters.filter((character) => !query || [character.display_name, character.tagline, character.intro, ...character.tags].join(" ").toLowerCase().includes(query));
-    if (selectedTags.length) items = items.filter((character) => selectedTags.every((tag) => character.tags.includes(tag)));
+    let items = characters;
     if (activeTab === "Trending") items = items.filter((character) => character.badges.some((badge) => badge.code.toLowerCase().includes("trend") || badge.display_name.toLowerCase().includes("trend")));
     if (activeTab === "Latest") items = items.filter((character) => character.badges.some((badge) => badge.code.toLowerCase().includes("new") || badge.display_name.toLowerCase().includes("new")));
     if (activeTab === "Popular") items = [...items].sort((a, b) => b.interaction_count - a.interaction_count);
     if (activeTab === "Following") items = [];
     return items;
-  }, [activeTab, characters, searchText, selectedTags]);
+  }, [activeTab, characters]);
 
-  async function load() {
-    setLoading(true); setError(null);
+  // 每次筛选条件变化都自增；回来的响应如果不是最新那一代就整条丢掉。去抖不能替代它——
+  // 两个请求都发出去之后，谁先回来是网络说的，慢的那个先发、后到，就会把新结果盖回旧结果。
+  const feedGeneration = useRef(0);
+  const inFlight = useRef<AbortController | null>(null);
+
+  // Limitless 是筛选行里的一个收窄条件，不是成人内容开关：开 = 只看 mature，关 = 不筛分级
+  // （**不是**"藏起 mature"）。真要做 NSFW 开关，它属于账号设置、需要持久化，也不该长在这排
+  // 一次性筛选按钮里。
+  const ratingFilter: FeedRating | null = limitless ? "mature" : null;
+  const genderFilter = GENDER_OPTIONS.find((option) => option.label === gender)?.value ?? null;
+
+  const loadFirstPage = useCallback(async () => {
+    const generation = ++feedGeneration.current;
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const unfiltered = !query && selectedTags.length === 0 && !genderFilter && !ratingFilter;
+    setLoading(true); setError(null); setPageError(null);
     try {
-      const feed = await getFeed();
-      setCharacters(feed.items);
-    } catch (loadError) {
-      setError(
-        loadError instanceof ApiError && loadError.status === 503
-          ? "Plum Chat 暂时未开放，请稍后再来。"
-          : "暂时没能连接角色世界，请确认本地后端已经启动。",
+      const page = await getFeed(
+        { q: query, tags: selectedTags, gender: genderFilter, rating: ratingFilter },
+        { signal: controller.signal },
       );
+      if (generation !== feedGeneration.current) return;
+      setCharacters(page.items);
+      setNextCursor(page.next_cursor);
+      if (unfiltered) setTagVocabulary(Array.from(new Set(page.items.flatMap((character) => character.tags))).slice(0, TAG_VOCABULARY_MAX));
+    } catch (loadError) {
+      if (generation !== feedGeneration.current || controller.signal.aborted) return;
+      setError(errorMessage(loadError, {
+        offline: "Could not reach the character world. Check your connection and try again.",
+        fallback: "Could not load characters just now. Try again in a moment.",
+        byStatus: { 503: "Plum is not open yet. Please come back soon." },
+      }));
     }
-    finally { setLoading(false); }
-  }
+    finally { if (generation === feedGeneration.current) setLoading(false); }
+  }, [genderFilter, query, ratingFilter, selectedTags]);
 
-  useEffect(() => { void load(); }, []);
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    const generation = feedGeneration.current;
+    setLoadingMore(true); setPageError(null);
+    try {
+      const page = await getFeed({
+        q: query, tags: selectedTags, gender: genderFilter, rating: ratingFilter, cursor: nextCursor,
+      });
+      // 翻页期间用户改了筛选：这一页属于旧条件，追加进去就是两套结果混在一起。
+      if (generation !== feedGeneration.current) return;
+      setCharacters((current) => {
+        const seen = new Set(current.map((character) => character.id));
+        return [...current, ...page.items.filter((character) => !seen.has(character.id))];
+      });
+      setNextCursor(page.next_cursor);
+    } catch (pageLoadError) {
+      if (generation !== feedGeneration.current) return;
+      setPageError(errorMessage(pageLoadError, { fallback: "Could not load more characters." }));
+    }
+    finally { if (generation === feedGeneration.current) setLoadingMore(false); }
+  }, [genderFilter, loadingMore, nextCursor, query, ratingFilter, selectedTags]);
+
+  // 输入停下来才发请求；`query` 进依赖是为了让定时器落地后这个 effect 自己收敛。
+  useEffect(() => {
+    const term = searchText.trim();
+    if (term === query) return;
+    const timer = setTimeout(() => setQuery(term), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchText, query]);
+
+  useEffect(() => { void loadFirstPage(); }, [loadFirstPage]);
+  useEffect(() => () => inFlight.current?.abort(), []);
   useEffect(() => {
     if (!context) return;
     if (context.actor.kind === "member") { setUser(context.actor.user); setBalance(context.wallet?.balance ?? 0); }
@@ -102,7 +186,7 @@ function FeedContent() {
       if (openError instanceof ApiError && (openError.status === 403 || openError.status === 401)) {
         setPendingTarget(characterId); setWelcomeOpen(true); return;
       }
-      setError("Could not start the chat. Please try again later.");
+      setError(errorMessage(openError, { fallback: "Could not start the chat. Please try again later." }));
     }
   }
 
@@ -123,53 +207,64 @@ function FeedContent() {
     else if (target) void enterCharacter(target);
   }
 
-  function clearFilters() { setLimitless(false); setGender("All"); setSelectedTags([]); }
+  function clearFilters() { setLimitless(false); setGender("All"); setSelectedTags([]); setSearchText(""); setQuery(""); }
+
+  function toggleTag(tag: string) {
+    setSelectedTags((current) => {
+      if (current.includes(tag)) return current.filter((item) => item !== tag);
+      // 服务端超过 FEED_TAGS_MAX 个直接 400；这里就不让用户点出那次失败。
+      return current.length >= FEED_TAGS_MAX ? current : [...current, tag];
+    });
+  }
 
   return <main className="character-feed-shell">
     <header className="site-header">
       <div className="header-brand-group"><Brand /><CommunityLink /></div>
       <div className="site-header-actions">
-        <button className="header-circle" aria-label="搜索" aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
-        <button className="header-circle" aria-label="创作" title="创作" onClick={openCreate}><CreateIcon /></button>
+        <button className="header-circle" aria-label={HEADER_LABELS.search} aria-expanded={searchOpen} onClick={() => setSearchOpen((value) => !value)}><SearchIcon /></button>
+        <button className="header-circle" aria-label={HEADER_LABELS.create} title={HEADER_LABELS.create} onClick={openCreate}><CreateIcon /></button>
         <div className="header-menu-wrap">
-          <button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>
-          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>更多语言后续接入</small></div>}
+          <button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}
         </div>
-        {user && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>
-          {walletOpen && <div className="header-dropdown wallet-panel"><small>金币余额</small><strong>{balance.toLocaleString("zh-CN")}</strong><h3>消费记录</h3><p>暂无消费记录</p><button disabled>充值入口 · 后续开放</button></div>}
+        {user && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>
+          {walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}
         </div>}
-        {user ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button onClick={() => router.push("/studio")}>My Studio</button><button disabled>账户设置 · 后续填充</button><button onClick={() => void signOut()}>退出登录</button></div>}
-        </div> : <button className="header-circle" aria-label="登录" onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
+        {user ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label={HEADER_LABELS.account}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
+          {accountOpen && <div className="header-dropdown account-menu"><button onClick={() => router.push("/studio")}>{ACCOUNT_MENU.studio}</button><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}
+        </div> : <button className="header-circle" aria-label={HEADER_LABELS.signIn} onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
       </div>
-      {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索角色、设定或标签" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="关闭搜索"><CloseIcon /></button><div><small>热门搜索</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
+      {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search characters, settings, or tags" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="Close search"><CloseIcon /></button><div><small>Trending searches</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
     </header>
 
     <section className="feed-content">
       <div className="feed-controls">
-        <nav className="feed-tabs" aria-label="发现分类">{MAIN_TABS.map((label) => <button className={activeTab === label ? "active" : ""} key={label} onClick={() => setActiveTab(label)}>{label}</button>)}</nav>
+        <nav className="feed-tabs" aria-label="Discover categories">{MAIN_TABS.map((label) => <button className={activeTab === label ? "active" : ""} key={label} onClick={() => setActiveTab(label)}>{label}</button>)}</nav>
         <div className="feed-filters">
           <button className={`limitless-switch${limitless ? " active" : ""}`} aria-pressed={limitless} onClick={() => setLimitless((value) => !value)}><span>Limitless</span><i /></button>
           <div className="gender-menu-wrap">
-            <button className="gender-filter" aria-label="角色性别" aria-expanded={genderOpen} onClick={() => setGenderOpen((value) => !value)}><span>{gender}</span><i>⌄</i></button>
-            {genderOpen && <div className="gender-menu">{["All", "Female", "Male", "Other"].map((option) => <button className={gender === option ? "selected" : ""} key={option} onClick={() => { setGender(option); setGenderOpen(false); }}><span>{option}</span>{gender === option && <i>✓</i>}</button>)}</div>}
+            <button className="gender-filter" aria-label="Character gender" aria-expanded={genderOpen} onClick={() => setGenderOpen((value) => !value)}><span>{gender}</span><i>⌄</i></button>
+            {genderOpen && <div className="gender-menu">{GENDER_OPTIONS.map(({ label }) => <button className={gender === label ? "selected" : ""} key={label} onClick={() => { setGender(label); setGenderOpen(false); }}><span>{label}</span>{gender === label && <i>✓</i>}</button>)}</div>}
           </div>
           <div className="tag-filter-wrap">
-            <button className={`filter-button${selectedTags.length ? " active" : ""}`} aria-label="筛选标签" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><FilterIcon /></button>
-            {filtersOpen && <div className="tag-filter-panel"><header><strong>筛选标签</strong><button onClick={() => setFiltersOpen(false)} aria-label="关闭标签筛选"><CloseIcon /></button></header><div>{availableTags.map((tag) => <button className={selectedTags.includes(tag) ? "active" : ""} key={tag} onClick={() => setSelectedTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag])}>{tag}</button>)}</div><small>标签生产流程将在后续版本接入。</small></div>}
+            <button className={`filter-button${selectedTags.length ? " active" : ""}`} aria-label="Filter by tag" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((value) => !value)}><FilterIcon /></button>
+            {filtersOpen && <div className="tag-filter-panel"><header><strong>Filter by tag</strong><button onClick={() => setFiltersOpen(false)} aria-label="Close tag filters"><CloseIcon /></button></header><div>{availableTags.map((tag) => <button className={selectedTags.includes(tag) ? "active" : ""} key={tag} disabled={!selectedTags.includes(tag) && selectedTags.length >= FEED_TAGS_MAX} onClick={() => toggleTag(tag)}>{tag}</button>)}</div><small>{selectedTags.length >= FEED_TAGS_MAX ? `Up to ${FEED_TAGS_MAX} tags at a time.` : "A fuller tag library is coming."}</small></div>}
           </div>
         </div>
       </div>
-      {error && <div className="error-banner"><span>{error}</span><button onClick={() => void load()}>重新加载</button></div>}
-      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>没有找到符合条件的角色</strong><button onClick={clearFilters}>清除筛选</button></div> : <div className="character-grid">{visibleCharacters.map((character, index) => <article className="character-card" key={character.id}>
-        <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`和 ${character.display_name} 开始聊天`}>
+      {error && <div className="error-banner"><span>{error}</span><button onClick={() => void loadFirstPage()}>Reload</button></div>}
+      {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>No characters match these filters</strong><button onClick={clearFilters}>Clear filters</button></div> : <><div className="character-grid">{visibleCharacters.map((character, index) => <article className="character-card" key={character.id}>
+        <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`Start chatting with ${character.display_name}`}>
           <Image className="character-card-cover" src={character.cover_ref ?? "/characters/kai.svg"} alt={character.display_name} fill priority={index < 6} sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" />
           <span className="card-darken" />
           {openingId === character.id && <span className="opening-card">Entering story…</span>}
           <span className="card-copy"><strong>{character.display_name}</strong><span className="card-meta-row"><span className="chat-count"><MessageIcon />{formatCompactCount(character.interaction_count)}</span>{character.tags.slice(0, 3).map((tag, tagIndex) => <span className={`character-tag${tagIndex === 2 ? " character-tag-tertiary" : ""}`} key={tag}>{tag}</span>)}</span><span className="card-tagline">{character.tagline}</span></span>
           <span className="card-hover-detail"><i className="hover-avatar"><Image src={character.avatar_ref ?? character.cover_ref ?? "/characters/kai.svg"} alt="" fill sizes="52px" /></i><span>{character.intro || character.tagline}</span><b><MessageIcon />Chat Now</b></span>
         </button>
-      </article>)}</div>}
+      </article>)}</div>
+      {pageError && <p className={styles.loadMoreError}><span>{pageError}</span><button onClick={() => void loadMore()}>Retry</button></p>}
+      {nextCursor && <div className={styles.loadMore}><button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more characters"}</button></div>}
+      </>}
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
     {loginOpen && <EmailSignInDialog returnTo={pendingTarget === "create" ? "/create" : undefined} onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}

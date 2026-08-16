@@ -190,7 +190,18 @@ data: {"version":1,"turn_id":"turn_x","message_id":"msg_x","finish_reason":"stop
 | `turn.completed` | 成功完成或已完成请求的幂等回放 | message/charged/wallet |
 | `turn.cancelled` | 客户端停止或连接断开 | message_id 可选、charged/wallet |
 | `turn.failed` | 流打开后的失败 | code/retryable/charged/wallet |
-| `ping` | 15 秒无业务事件时保活 | server_time |
+
+保活（心跳）不是事件，而是一条 SSE 注释：
+
+```text
+: ping
+
+```
+
+- 后端每 `_STREAM_HEARTBEAT_SECONDS`（当前 10 秒）无业务事件就发一次，远低于代理、负载均衡和移动网络 NAT 常见的 30–60 秒空闲回收窗口。
+- 用注释而不是 `event: ping`，是为了让它**在解析层就不存在**：前端 `parseSseRecords` 跳过 `:` 开头的行，不会产出记录，因此老客户端零改动兼容，也不可能被误当成业务事件。
+- 心跳只证明“连接和进程活着”，**不代表模型还在产出**。Provider 卡死时心跳照发，所以它绝不能刷新“还在生成”的判断——把心跳算作进度就等于永远等下去。判断卡死靠前端独立的事件空闲超时（45 秒，见 TECH-02 §13.3），只被解析成功的业务事件刷新。
+- 实现上后端用一个 pump 线程把阻塞的 runtime 迭代器排到队列，才有“空闲即发心跳”的时机；见 `app/products/plum/api/app.py` 的 `_with_runtime_heartbeats`。
 
 协议约束：
 
@@ -512,6 +523,7 @@ Bootstrap 返回服务端能力：
 - `stream_truncated_total`
 - `stream_coin_reserved/kept/released_total`
 - `stream_active_turns`
+- `stream_pump_lingering_total`：心跳 pump 线程在 turn 结束后 0.5 秒内没退出，说明 Provider 调用忽略了取消。这是目前唯一能观测到“服务端 turn 卡住”的信号，客户端此时已经靠 45 秒空闲超时脱身。
 
 日志阶段：accepted、provider_connected、first_delta、tool_round、completed/cancelled/failed、billing_finalized。禁止输出 API key、Cookie、CSRF、Prompt、tool arguments 和用户正文。
 
@@ -544,6 +556,7 @@ Bootstrap 返回服务端能力：
 - 同一 conversation 并发第二个 turn 返回 409。
 - 两个测试用户的流和消息完全隔离。
 - 功能开关关闭时同步接口仍正常。
+- Provider 长时间不产出时下发 `: ping` 注释，且不增加客户端可见的事件条数。
 
 SQLite 和 PostgreSQL 两档都必须覆盖 run 状态 migration 与幂等约束。
 
@@ -825,3 +838,4 @@ S5 前端主干整合收口（2026-08-09）：
 | 2026-08-09 | 完成 S3；开始 S4 前端体验 | 开发中 | Plum/Runtime 流式 API 与固定金币测试 16 passed |
 | 2026-08-09 | 完成 S4；开始 S5 真实联调与代理灰度准备 | 开发中 | 前端 4 tests、typecheck/build；同步回退 Desktop/Mobile 与 3 金币验收通过 |
 | 2026-08-09 | 完成 S5 本地联调、Stop 竞态修复与部署准备 | 开发中 | 三档真实流式与 1/3/5 计费；SQLite/PG 聚焦各 22 passed；待线上 HTTPS 探针 |
+| 2026-08-15 | 补齐 S5 遗留的 heartbeat：§6.3 保活由“`ping` 事件/15 秒”改为“SSE 注释/10 秒”，配套前端 45 秒事件空闲超时 | 未提交 | plum 119 passed、shared+platform 812 passed；前端 26 tests |
