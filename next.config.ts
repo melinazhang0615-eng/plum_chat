@@ -21,7 +21,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ["127.0.0.1", "localhost"],
+  // plum.top / www.plum.top 是本机部署的域名；只影响 next dev 的跨 origin 校验，
+  // 生产的 next start 不读这一项。保留以便在这台机器上直接 npm run dev 调试。
+  allowedDevOrigins: ["127.0.0.1", "localhost", "plum.top", "www.plum.top"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
