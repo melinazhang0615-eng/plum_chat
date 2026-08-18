@@ -18,6 +18,8 @@
 .shell button, .shell input, .shell textarea, .shell select { font: inherit; }
 .shell svg { width: 21px; height: 21px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.55; stroke-linecap: round; stroke-linejoin: round; }
 .shell :global(.language-symbol) svg { fill: rgba(255,255,255,.82); stroke: none; }
+/* Header menus must stay above the page intro/import stacking context, but below dialogs. */
+.shell :global(.site-header) { z-index: 150; }
 
 .saveStatus { display: inline-flex; align-items: center; gap: 7px; margin: 0 5px; color: rgba(255,255,255,.35); font-size: 10px; }
 .reviewStatus { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border: 1px solid rgba(185,144,235,.25); border-radius: 999px; color: #c8abea; background: rgba(143,93,200,.1); font-size: 9px; font-weight: 600; }

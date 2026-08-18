@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
-import { CreateIcon } from "@/components/icons";
-import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks } from "@/lib/api";
+import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
+import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
+import { ACCOUNT_MENU, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { errorMessage } from "@/lib/error-messages";
+import { formatCoins } from "@/lib/format";
+import type { AuthUser } from "@/lib/types";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
@@ -29,11 +32,18 @@ export default function StudioPage() {
   const [deleteTarget, setDeleteTarget] = useState<CreationWork | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [view, setView] = useState<StudioView>("all");
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [balance, setBalance] = useState(0);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   async function load() {
     setLoading(true); setError("");
     try {
-      await getBootstrap();
+      const bootstrap = await getBootstrap();
+      setUser(bootstrap.user);
+      setBalance(bootstrap.wallet.balance);
       const result = await listCreationWorks();
       setItems(result.items);
     } catch (loadError) {
@@ -89,10 +99,33 @@ export default function StudioPage() {
     }
   }
 
+  async function signOut() {
+    try { await logout(); } catch { /* An expired session is already signed out. */ }
+    setUser(null);
+    setBalance(0);
+    setAccountOpen(false);
+    router.replace("/");
+  }
+
   return <main className={styles.shell}>
     <header className="site-header">
       <div className="header-brand-group"><Brand ariaLabel="Back to Plum home"/><CommunityLink/></div>
-      <div className="site-header-actions"><button className="header-circle" aria-label="Create character" title="Create character" onClick={() => router.push("/create")}><CreateIcon /></button></div>
+      <div className="site-header-actions">
+        <button className="header-circle" aria-label={HEADER_LABELS.search} onClick={() => router.push("/?search=1")}><SearchIcon /></button>
+        <button className="header-circle" aria-label={HEADER_LABELS.create} title={HEADER_LABELS.create} onClick={() => router.push("/create")}><CreateIcon /></button>
+        <div className="header-menu-wrap">
+          <button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((open) => !open)}><TranslationIcon /></button>
+          {languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}
+        </div>
+        {user && <div className="header-menu-wrap">
+          <button className="coin-button" onClick={() => setWalletOpen((open) => !open)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>
+          {walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}
+        </div>}
+        {user && <div className="header-menu-wrap">
+          <button className="account-button" onClick={() => setAccountOpen((open) => !open)} aria-label={HEADER_LABELS.account} aria-expanded={accountOpen}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
+          {accountOpen && <div className="header-dropdown account-menu"><button aria-current="page" onClick={() => setAccountOpen(false)}>{ACCOUNT_MENU.studio}</button><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}
+        </div>}
+      </div>
     </header>
     <section className={styles.heading}><div><span>CREATOR SPACE</span><h1>My Studio</h1><p>Manage drafts, review status, and published characters.</p></div></section>
     <nav className={styles.views} aria-label="Studio sections">
