@@ -69,11 +69,11 @@ Create V1 首期只提供**单角色创建 UI**。服务端和数据库不能因
 | Portrait | `portrait_media_id` | 必填且只能 1 张 | JPG / JPEG、PNG、WebP、HEIC / HEIF；最终大小限制待确认 | 角色封面及头像来源 | 否 |
 | Portrait position | `portrait_position_x` / `portrait_position_y` | 有立绘时必有默认值 | 均为 0～100，默认 50 | 立绘及封面取景 | 否 |
 | Avatar position | `avatar_position_x` / `avatar_position_y` | 有立绘时必有默认值 | 均为 0～100，默认 50 | 圆形头像取景 | 否 |
-| Character Intro | `intro` | 必填 | 1～500 字符 | 首页角色卡及未来公开资料 | 默认不作为核心私有人设；是否进入 Prompt 待确认 |
-| Opening Scene | `opening_scene` | 必填 | 1～2000 字符 | 进入真实聊天时作为开场内容；首页卡片不展示 | 作为会话开场，不应每轮重复注入 |
-| Character Settings | `character_settings` | 必填 | 1～12000 字符 | 不直接公开 | 是，核心角色设定 |
-| Example Dialogues | `example_dialogues` | 选填 | 0～6000 字符 | 不直接公开 | 是，用于稳定说话方式和反应方式 |
-| Response rules | `response_rules` | 选填 | 0～3000 字符 | 不直接公开 | 是，作为回复约束 |
+| Character Intro | `intro` | 必填 | 1～10000 字符 | 首页角色卡及未来公开资料 | 默认不作为核心私有人设；是否进入 Prompt 待确认 |
+| Opening Scene | `opening_scene` | 必填 | 1～10000 字符 | 进入真实聊天时作为开场内容；首页卡片不展示 | 作为会话开场，不应每轮重复注入 |
+| Character Settings | `character_settings` | 必填 | 1～20000 字符 | 不直接公开 | 是，核心角色设定 |
+| Example Dialogues | `example_dialogues` | 选填 | 0～10000 字符 | 不直接公开 | 是，用于稳定说话方式和反应方式 |
+| Response rules | `response_rules` | 选填 | 0～6000 字符 | 不直接公开 | 是，作为回复约束 |
 | Tags | `tag_ids` | 至少 1 个 | 最多 5 个；只接受有效 ID | 首页卡片、搜索和推荐 | 否 |
 | Content rating | `creator_declared_rating` | 必填 | API 为 `general` / `mature`；UI 展示 Limited / Limitless | 创作者声明；最终访问等级由平台审核决定 | 不应被理解为绕过平台安全规则 |
 | Visibility | `visibility` | 必填 | `public` / `private` | 表达期望发现范围；实际生效规则待专项设计 | 否 |
@@ -576,7 +576,7 @@ plum.create.v1.single-character
 
 - 不完整草稿可以保存；完整度判断不会自动触发发布。
 - 全部必填项完成后，前端与服务端的字段完整度判断一致。
-- Name 40、Intro 500、Opening 2000、Settings 12000、Examples 6000、Response Rules 3000 的边界值前后端一致。
+- Name 50、Intro 10000、Opening 10000、Settings 20000、Examples 10000、Response Rules 6000 的边界值前后端一致。
 - Gender 只接受三个稳定枚举。
 - Tags 为 1～5 个有效 ID；重复、停用、未知和超量均有稳定错误。
 - 真实 JPEG、PNG、WebP、HEIC、HEIF 均可上传，并返回浏览器可展示的标准化 JPEG / PNG 预览资源。

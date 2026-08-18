@@ -8,6 +8,7 @@ import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, createCreationDraft, getCreationDraft, getCreatorTags, publishCreationDraft, updateCreationDraft, uploadCreatorPortrait } from "@/lib/api";
 import type { CreationDraftContent, CreationWork, CreatorTag } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU } from "@/lib/copy";
+import { creationDraftStorageKey, LEGACY_CREATION_DRAFT_STORAGE_KEY } from "@/lib/creation-draft-cache";
 import { normalizeCreatorTagIds } from "@/lib/creator-tags";
 import { errorMessage } from "@/lib/error-messages";
 import type { AuthUser } from "@/lib/types";
@@ -46,8 +47,14 @@ type ImportResult = {
   summary: string;
 };
 
-const STORAGE_KEY = "plum.create.v1.single-character";
 const PORTRAIT_ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif,image/jpeg,image/png,image/webp,image/heic,image/heif";
+const CHARACTER_TEXT_LIMITS = {
+  intro: 10_000,
+  opening: 10_000,
+  settings: 20_000,
+  examples: 10_000,
+  responseRules: 6_000,
+} as const;
 
 const EMPTY_DRAFT: CharacterDraft = {
   name: "",
@@ -208,10 +215,15 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
   const cropDrag = useRef<{ target: "portrait" | "avatar"; pointerId: number; startX: number; startY: number; positionX: number; positionY: number; width: number; height: number } | null>(null);
   const jsonInput = useRef<HTMLInputElement>(null);
   const creationAttempt = useRef<{ signature: string; idempotencyKey: string } | null>(null);
+  const browserDraftKey = creationDraftStorageKey(user.id, workId);
 
   useEffect(() => {
+    const newDraftKey = creationDraftStorageKey(user.id);
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
+      // The V1 key was shared by every member and every Work. Never restore it into a new
+      // character because it may belong to another account or an already-saved character.
+      window.localStorage.removeItem(LEGACY_CREATION_DRAFT_STORAGE_KEY);
+      const stored = window.localStorage.getItem(newDraftKey);
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<CharacterDraft> & { description?: string; background?: string };
         setDraft({
@@ -230,21 +242,21 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
         });
       }
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(newDraftKey);
     } finally {
       setHydrated(true);
     }
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || restore) return;
     setSaved(false);
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      window.localStorage.setItem(browserDraftKey, JSON.stringify(draft));
       setSaved(true);
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [draft, hydrated]);
+  }, [browserDraftKey, draft, hydrated, restore]);
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
@@ -396,13 +408,18 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
       const result = workId
         ? await updateCreationDraft(workId, workRevision, content)
         : await createCreationDraft(content);
+      const previousBrowserDraftKey = browserDraftKey;
+      const savedBrowserDraftKey = creationDraftStorageKey(user.id, result.work.work_id);
       setWorkId(result.work.work_id);
       setWorkRevision(result.work.revision);
       setModerationStatus(result.work.moderation_status);
       const url = new URL(window.location.href);
       url.searchParams.set("work_id", result.work.work_id);
       window.history.replaceState(null, "", url);
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
+      window.localStorage.setItem(savedBrowserDraftKey, JSON.stringify(draft));
+      if (previousBrowserDraftKey !== savedBrowserDraftKey) {
+        window.localStorage.removeItem(previousBrowserDraftKey);
+      }
       setSaved(true);
       return result.work;
     } finally {
@@ -431,7 +448,7 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
     setWorkRevision(0);
     setModerationStatus("not_submitted");
     creationAttempt.current = null;
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(browserDraftKey);
     const url = new URL(window.location.href);
     url.searchParams.delete("work_id");
     window.history.replaceState(null, "", url);
@@ -719,17 +736,17 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
 
           <section className={styles.formSection}>
             <header className={styles.sectionTitle}><div><span>03</span><h2>Character details</h2></div><p>Introduce the character publicly, then define how they should behave in every conversation.</p></header>
-            <Field label="Character Intro" required hint="Shown publicly on the character card. Give people a clear, compelling reason to meet this character." count={`${draft.intro.length}/500`}><textarea rows={5} maxLength={500} value={draft.intro} placeholder="Introduce the character's identity, personality, and story hook…" onChange={(event) => update({ intro: event.target.value })}/></Field>
-            <Field label="Opening Scene" required hint="The first scene users will see. Establish the setting, action, and the character's opening line." count={`${draft.opening.length}/2000`}><textarea rows={8} maxLength={2000} value={draft.opening} placeholder="Set the scene and invite the user into the story…" onChange={(event) => update({ opening: event.target.value })}/></Field>
-            <Field label="Character Settings" required hint="Private instructions that guide every reply. Define personality, history, goals, boundaries, and the relationship with the user." count={`${draft.characterSettings.length}/5000`}><textarea rows={11} maxLength={5000} value={draft.characterSettings} placeholder="Define the character's core identity, memories, motivations, boundaries, and relationship with the user…" onChange={(event) => update({ characterSettings: event.target.value })}/></Field>
+            <Field label="Character Intro" required hint="Shown publicly on the character card. Give people a clear, compelling reason to meet this character." count={`${draft.intro.length}/${CHARACTER_TEXT_LIMITS.intro}`}><textarea rows={5} maxLength={CHARACTER_TEXT_LIMITS.intro} value={draft.intro} placeholder="Introduce the character's identity, personality, and story hook…" onChange={(event) => update({ intro: event.target.value })}/></Field>
+            <Field label="Opening Scene" required hint="The first scene users will see. Establish the setting, action, and the character's opening line." count={`${draft.opening.length}/${CHARACTER_TEXT_LIMITS.opening}`}><textarea rows={8} maxLength={CHARACTER_TEXT_LIMITS.opening} value={draft.opening} placeholder="Set the scene and invite the user into the story…" onChange={(event) => update({ opening: event.target.value })}/></Field>
+            <Field label="Character Settings" required hint="Private instructions that guide every reply. Define personality, history, goals, boundaries, and the relationship with the user." count={`${draft.characterSettings.length}/${CHARACTER_TEXT_LIMITS.settings}`}><textarea rows={11} maxLength={CHARACTER_TEXT_LIMITS.settings} value={draft.characterSettings} placeholder="Define the character's core identity, memories, motivations, boundaries, and relationship with the user…" onChange={(event) => update({ characterSettings: event.target.value })}/></Field>
           </section>
 
           <section className={styles.formSection}>
             <details className={styles.moreSettings} open>
               <summary><span><b>More Settings</b><small>Optional tools for a more consistent voice and behavior</small></span><i>⌄</i></summary>
               <div className={styles.settingsBody}>
-                <Field label="Example Dialogues" hint="Show how the character speaks and reacts. Use {{user}} and {{char}} to identify each speaker." count={`${draft.examples.length}/4000`}><textarea rows={8} maxLength={4000} value={draft.examples} placeholder={'{{user}}: Do you know me?\n{{char}}: Longer than you realize.'} onChange={(event) => update({ examples: event.target.value })}/></Field>
-                <Field label="Response rules" hint="Add specific behaviors the character should always follow—or avoid—in every reply." count={`${draft.replyRules.length}/3000`}><textarea rows={6} maxLength={3000} value={draft.replyRules} placeholder="For example: Move the story through actions; never decide for the user; avoid repeating the previous reply…" onChange={(event) => update({ replyRules: event.target.value })}/></Field>
+                <Field label="Example Dialogues" hint="Show how the character speaks and reacts. Use {{user}} and {{char}} to identify each speaker." count={`${draft.examples.length}/${CHARACTER_TEXT_LIMITS.examples}`}><textarea rows={8} maxLength={CHARACTER_TEXT_LIMITS.examples} value={draft.examples} placeholder={'{{user}}: Do you know me?\n{{char}}: Longer than you realize.'} onChange={(event) => update({ examples: event.target.value })}/></Field>
+                <Field label="Response rules" hint="Add specific behaviors the character should always follow—or avoid—in every reply." count={`${draft.replyRules.length}/${CHARACTER_TEXT_LIMITS.responseRules}`}><textarea rows={6} maxLength={CHARACTER_TEXT_LIMITS.responseRules} value={draft.replyRules} placeholder="For example: Move the story through actions; never decide for the user; avoid repeating the previous reply…" onChange={(event) => update({ replyRules: event.target.value })}/></Field>
               </div>
             </details>
           </section>
