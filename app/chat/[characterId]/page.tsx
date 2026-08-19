@@ -1,14 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { CommunityLink } from "@/components/community-link";
 import { EmailSignInDialog, PlumAuthProvider, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
-import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
-import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
 function formatTime(value?: string) {
   if (!value) return "Just now";
@@ -32,6 +32,10 @@ const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: stri
   { profile: "balanced", display_name: "Balanced", coin_cost: 0 },
   { profile: "immersive", display_name: "Immersive", coin_cost: 0 },
 ];
+
+// A hand-written memory is capped at the same length the composer accepts for a
+// message, so a pin written by hand cannot outgrow one saved from a reply.
+const MEMORY_DRAFT_MAX = 2000;
 
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
@@ -81,6 +85,15 @@ function InspirationIcon() {
 function CommentIcon() {
   return <svg className="comment-ico" viewBox="0 0 16 16" aria-hidden="true"><path fillRule="evenodd" clipRule="evenodd" d="M8 1.7c3.5 0 6.3 2.3 6.3 5.2 0 2.88-2.8 5.2-6.3 5.2-.62 0-1.22-.07-1.78-.2l-3.02 1.5c-.28.14-.6-.12-.52-.42l.63-2.3C2.06 9.86 1.7 8.64 1.7 6.9 1.7 4 4.5 1.7 8 1.7ZM5.4 6a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Z" /></svg>;
 }
+function MemoryIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.2a2.8 2.8 0 0 0-5.3-1.3A2.9 2.9 0 0 0 4 6.8a3 3 0 0 0-.6 4.7 3 3 0 0 0 1 4.7 2.9 2.9 0 0 0 4.9 1.9A2.8 2.8 0 0 0 12 16.2V5.2Z" /><path d="M12 5.2a2.8 2.8 0 0 1 5.3-1.3A2.9 2.9 0 0 1 20 6.8a3 3 0 0 1 .6 4.7 3 3 0 0 1-1 4.7 2.9 2.9 0 0 1-4.9 1.9A2.8 2.8 0 0 1 12 16.2V5.2Z" /><path d="M12 6.6v11.8" /></svg>;
+}
+function CopyIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.4" /><path d="M15.4 6.4A2.4 2.4 0 0 0 13 4H6.4A2.4 2.4 0 0 0 4 6.4V13a2.4 2.4 0 0 0 2.4 2.4" /></svg>;
+}
+function ContinueIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 7.5 5 4.5-5 4.5M13 7.5l5 4.5-5 4.5" /></svg>;
+}
 function ScrollLatestIcon() {
   return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M22.4 21.6H9.6M16 9.6v9.1m0 0 4-4.2m-4 4.2-4-4.2" /></svg>;
 }
@@ -89,6 +102,15 @@ function BackIcon() {
 }
 function CloseIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
+}
+function EditIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" /><path d="m14.5 5.5 4 4" /></svg>;
+}
+function PlusIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" /></svg>;
+}
+function HelpIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6" /><path d="M9.7 9.4a2.4 2.4 0 0 1 4.66.75c0 1.6-2.33 2.1-2.33 3.55" /><path d="M12 16.8h.01" /></svg>;
 }
 function RestartIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 5 15.5M4.8 9V4.5M4.8 9h4.5" /></svg>;
@@ -121,6 +143,18 @@ function messageStatusText(message: ChatMessage) {
   return formatTime(message.created_at);
 }
 
+const MEMORY_PARTICLES = 11;
+const MEMORY_ARC_SAMPLES = 16;
+const MEMORY_FLIGHT_MS = 1180;
+const SVG_NS = "http://www.w3.org/2000/svg";
+// White, varied only by how solid each one is, so the trail keeps some depth.
+const MEMORY_PARTICLE_TINTS = [
+  "linear-gradient(140deg, #ffffff, rgba(255,255,255,.86))",
+  "linear-gradient(140deg, rgba(255,255,255,.94), rgba(255,255,255,.72))",
+  "linear-gradient(140deg, rgba(255,255,255,.85), rgba(255,255,255,.6))",
+  "linear-gradient(140deg, rgba(255,255,255,.74), rgba(255,255,255,.5))",
+];
+
 function ChatContent() {
   const params = useParams<{ characterId: string }>();
   const search = useSearchParams();
@@ -139,6 +173,14 @@ function ChatContent() {
   const activeTurnRef = useRef<{ requestId: string; assistantId: string; cancelled: boolean } | null>(null);
   const reconciliationTimersRef = useRef<number[]>([]);
   const nearBottomRef = useRef({ desktop: true, mobile: true });
+  const desktopMemoryIconRef = useRef<HTMLButtonElement>(null);
+  const memoryDraftRef = useRef<HTMLTextAreaElement>(null);
+  const mobileMemoryIconRef = useRef<HTMLButtonElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const memoryPulseTimerRef = useRef<number | null>(null);
+  const memoryFlightTimerRef = useRef<number | null>(null);
+  const longPressRef = useRef<{ timer: number | null; x: number; y: number }>({ timer: null, x: 0, y: 0 });
+  const uidRef = useRef(0);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [experience, setExperience] = useState<CharacterExperience | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -178,14 +220,39 @@ function ChatContent() {
   const [error, setError] = useState<string | null>(null);
   const [showRestart, setShowRestart] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
-  const [composerPanel, setComposerPanel] = useState<"model" | "role" | "pinned" | null>(null);
+  const [composerPanel, setComposerPanel] = useState<"model" | "role" | null>(null);
   const [showChatMenu, setShowChatMenu] = useState(false);
+  // Anchored under the memory icon in the toolbar, not above the composer: the
+  // panel has to open next to the control that opens it.
+  const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  // Memories can also be written by hand from the same top-bar control. The value
+  // records which surface opened the writing view, because the two surfaces render
+  // it differently: a centred dialog on desktop, a full screen page on mobile.
+  const [memoryComposer, setMemoryComposer] = useState<"desktop" | "mobile" | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState("");
+  // The pin being rewritten, or null when the draft is a new memory.
+  const [memoryEditing, setMemoryEditing] = useState<ConversationPin | null>(null);
+  const [memorySaving, setMemorySaving] = useState(false);
+  // autoFocus alone leaves the caret at position 0, so editing an existing memory
+  // typed the new text in front of the old one.
+  useEffect(() => {
+    if (!memoryComposer) return;
+    const node = memoryDraftRef.current;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(node.value.length, node.value.length);
+  }, [memoryComposer]);
   const [showScrollLatest, setShowScrollLatest] = useState(false);
   const [liked, setLiked] = useState<boolean | null>(null);
   const [favorited, setFavorited] = useState<boolean | null>(null);
   const [reactionBusy, setReactionBusy] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"model" | "role" | "pinned" | "more" | null>(null);
+  const [toast, setToast] = useState<{ id: number; text: string; tone: "ok" | "info" | "error" } | null>(null);
+  // A ref, not state: every state change on this page re-renders both message
+  // lists (~30ms), which is not worth paying just to disable one button.
+  const memoryBusyRef = useRef(false);
+  const [messageMenu, setMessageMenu] = useState<{ message: ChatMessage; x: number; y: number; anchor: HTMLElement } | null>(null);
 
   const selectedModel = useMemo(
     () => models.find((item) => item.profile === conversation?.model_profile),
@@ -258,6 +325,10 @@ function ChatContent() {
     abortRef.current?.abort();
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
     reconciliationTimersRef.current.forEach((timer) => clearTimeout(timer));
+    [toastTimerRef.current, memoryPulseTimerRef.current, memoryFlightTimerRef.current, longPressRef.current.timer].forEach((timer) => {
+      if (timer !== null) clearTimeout(timer);
+    });
+    document.querySelectorAll(".memory-particle, .memory-trail").forEach((node) => node.remove());
   }, []);
 
   function redirectIfUnauthorized(requestError: unknown) {
@@ -371,22 +442,22 @@ function ChatContent() {
     void selectModel(profile);
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const content = text.trim();
-    if (!conversation || !content || sending || switchingModel || (!guest && !selectedModel)) return;
-    if (!guest && selectedModel && balance < selectedModel.coin_cost) {
-      setError("金币余额不足，暂时无法发送这条消息。");
-      return;
-    }
+  /**
+   * Shared turn runner. A `continue` turn adds no user bubble — the backend does
+   * not persist an inbound message for it — so the only difference is which rows
+   * go into the optimistic update.
+   */
+  async function runTurn(kind: "message" | "continue", content: string) {
+    if (!conversation) return;
     const requestId = crypto.randomUUID();
     const assistantId = `local-assistant:${requestId}`;
     const controller = new AbortController();
     let accepted = false;
-    setText("");
     setMessages((current) => [
       ...current,
-      { id: requestId, message_id: requestId, role: "user", content, status: "sending" },
+      ...(kind === "message"
+        ? [{ id: requestId, message_id: requestId, role: "user", content, status: "sending" } as ChatMessage]
+        : []),
       { id: assistantId, role: "assistant", content: "", status: "sending" },
     ]);
     streamBufferRef.current = "";
@@ -401,6 +472,7 @@ function ChatContent() {
           text: content,
           requestId,
           guest,
+          kind,
           signal: controller.signal,
           onEvent: (streamEvent) => {
             if (activeTurnRef.current?.requestId !== requestId || activeTurnRef.current.cancelled) return;
@@ -447,7 +519,7 @@ function ChatContent() {
           },
         });
       } else {
-        const result = await sendTurn(conversation.id, content, requestId, guest);
+        const result = await sendTurn(conversation.id, content, requestId, guest, kind);
         setMessages((current) => current.map((item) => item.id === requestId
           ? { ...item, status: "completed" }
           : item.id === assistantId ? {
@@ -480,6 +552,31 @@ function ChatContent() {
       setGenerationState("idle");
       focusVisibleComposer();
     }
+  }
+
+  /** Shared gate for both turn kinds: session, busy state and coin balance. */
+  function turnBlocked() {
+    if (!conversation || sending || switchingModel || (!guest && !selectedModel)) return true;
+    if (!guest && selectedModel && balance < selectedModel.coin_cost) {
+      setError("金币余额不足，暂时无法发送这条消息。");
+      return true;
+    }
+    return false;
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const content = text.trim();
+    if (!content || turnBlocked()) return;
+    setText("");
+    setError(null);
+    await runTurn("message", content);
+  }
+
+  async function continueTurn() {
+    if (turnBlocked()) return;
+    setError(null);
+    await runTurn("continue", "");
   }
 
   async function confirmRestart() {
@@ -521,6 +618,23 @@ function ChatContent() {
   const viewerHasFavorited = favorited ?? viewerState.is_favorite;
   const visibleLikeCount = viewerState.like_count + Number(viewerHasLiked) - Number(viewerState.has_liked);
   const visibleFavoriteCount = viewerState.favorite_count + Number(viewerHasFavorited) - Number(viewerState.is_favorite);
+  // "Continue" only makes sense on a finished reply the reader is currently
+  // looking at, so it hides while scrolled away from the latest message.
+  const lastMessage = messages[messages.length - 1];
+  const lastMessageStatus = lastMessage ? getMessageStatus(lastMessage) : null;
+  const canContinue = !sending && !switchingModel && !showScrollLatest
+    && lastMessage?.role === "assistant"
+    && Boolean(lastMessage.content)
+    && (lastMessageStatus === "completed" || lastMessageStatus === "cancelled");
+  const memories = conversationTools.pins;
+  // Memories written by hand sit above the ones saved from a reply: those are the
+  // ones the user curates, so they must not sink under whatever was long-pressed.
+  // Exactly one memory is written by hand. It is pinned to the top of the list and
+  // is the only row that can be edited; writing again rewrites it instead of
+  // adding a second one.
+  const manualMemory = memories.find((pin) => !pin.message_id) ?? null;
+  const orderedMemories = manualMemory ? [manualMemory, ...memories.filter((pin) => pin !== manualMemory)] : memories;
+  const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
   const guestQuotaLabel = guestQuota ? `免费体验：还可发送 ${guestQuota.remaining_turns} 条` : "免费体验聊天";
 
@@ -600,6 +714,343 @@ function ChatContent() {
     }
   }
 
+  function messageMemoryKey(message: ChatMessage) {
+    return String(message.message_id ?? message.id);
+  }
+
+  function showToast(text: string, tone: "ok" | "info" | "error" = "ok") {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    uidRef.current += 1;
+    setToast({ id: uidRef.current, text, tone });
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 2200);
+  }
+
+  // The flight orb and the icon pulse are decoration, so they are driven straight
+  // through the DOM: routing them through React state re-rendered the whole chat
+  // tree (both message lists) on the very frame the animation started.
+  function pulseMemoryIcon() {
+    const icons = [desktopMemoryIconRef.current, mobileMemoryIconRef.current];
+    icons.forEach((icon) => {
+      if (!icon) return;
+      icon.classList.remove("is-pulsing");
+      void icon.offsetWidth; // restart the ring even on back-to-back saves
+      icon.classList.add("is-pulsing");
+    });
+    if (memoryPulseTimerRef.current !== null) window.clearTimeout(memoryPulseTimerRef.current);
+    memoryPulseTimerRef.current = window.setTimeout(() => {
+      icons.forEach((icon) => icon?.classList.remove("is-pulsing"));
+    }, 900);
+  }
+
+  // Fly a small orb from the saved bubble to the memory icon in the top bar so the
+  // user can see where the memory landed. Falls back to just pulsing the icon when
+  // the source or target is not on screen (e.g. the other layout's copy of the bar).
+  function flyToMemoryIcon(source: HTMLElement | null, surface: "desktop" | "mobile") {
+    const target = (surface === "mobile" ? mobileMemoryIconRef : desktopMemoryIconRef).current;
+    if (!source || !target) {
+      pulseMemoryIcon();
+      return;
+    }
+    const from = source.getBoundingClientRect();
+    const to = target.getBoundingClientRect();
+    const x = from.left + from.width / 2;
+    const y = from.top + from.height / 2;
+    const dx = to.left + to.width / 2 - x;
+    const dy = to.top + to.height / 2 - y;
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      pulseMemoryIcon();
+      return;
+    }
+
+    // Bow the path away from the straight line, always toward the top of the
+    // screen, so the trail reads as an arc rather than a diagonal streak.
+    const length = Math.hypot(dx, dy) || 1;
+    const bow = Math.min(length * 0.34, 150);
+    let controlX = dx / 2 + (-dy / length) * bow;
+    let controlY = dy / 2 + (dx / length) * bow;
+    if (controlY > dy / 2) {
+      controlX = dx / 2 - (-dy / length) * bow;
+      controlY = dy / 2 - (dx / length) * bow;
+    }
+
+    // The arc itself, drawn head-first along the same curve the particles take.
+    // The stroke gradient runs transparent at the source → solid at the icon, so
+    // the tail dissolves behind the leading edge.
+    const trail = document.createElementNS(SVG_NS, "svg");
+    trail.setAttribute("class", "memory-trail");
+    trail.setAttribute("aria-hidden", "true");
+    uidRef.current += 1;
+    const gradientId = `memory-trail-${uidRef.current}`;
+    const defs = document.createElementNS(SVG_NS, "defs");
+    const gradient = document.createElementNS(SVG_NS, "linearGradient");
+    gradient.setAttribute("id", gradientId);
+    gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+    gradient.setAttribute("x1", `${x}`);
+    gradient.setAttribute("y1", `${y}`);
+    gradient.setAttribute("x2", `${x + dx}`);
+    gradient.setAttribute("y2", `${y + dy}`);
+    ([["0%", "rgba(255,255,255,0)"], ["55%", "rgba(255,255,255,.07)"], ["100%", "rgba(255,255,255,.32)"]] as const)
+      .forEach(([offset, color]) => {
+        const stop = document.createElementNS(SVG_NS, "stop");
+        stop.setAttribute("offset", offset);
+        stop.setAttribute("stop-color", color);
+        gradient.appendChild(stop);
+      });
+    defs.appendChild(gradient);
+    trail.appendChild(defs);
+    const arc = document.createElementNS(SVG_NS, "path");
+    arc.setAttribute("d", `M ${x} ${y} Q ${x + controlX} ${y + controlY} ${x + dx} ${y + dy}`);
+    arc.setAttribute("fill", "none");
+    arc.setAttribute("stroke", `url(#${gradientId})`);
+    arc.setAttribute("stroke-width", "1");
+    arc.setAttribute("stroke-linecap", "round");
+    trail.appendChild(arc);
+    document.body.appendChild(trail);
+    const arcLength = arc.getTotalLength();
+    arc.style.strokeDasharray = `${arcLength}`;
+    // Dim as it completes, so the line never sits at full strength on screen.
+    arc.animate([
+      { strokeDashoffset: arcLength, opacity: 0.75 },
+      { strokeDashoffset: 0, opacity: 0.45, offset: 0.66 },
+      { strokeDashoffset: 0, opacity: 0 },
+    ], { duration: MEMORY_FLIGHT_MS + 320, easing: "cubic-bezier(.35,.02,.2,1)", fill: "forwards" });
+
+    // Mostly four-point sparkles with a few small motes mixed in for texture.
+    const particles: { node: HTMLSpanElement; sparkle: boolean; baseScale: number; spin: number; phase: number }[] = [];
+    const batch = document.createDocumentFragment();
+    for (let index = 0; index < MEMORY_PARTICLES; index += 1) {
+      const node = document.createElement("span");
+      const sparkle = index % 3 !== 2;
+      node.className = `memory-particle ${sparkle ? "is-sparkle" : "is-mote"}`;
+      node.setAttribute("aria-hidden", "true");
+      node.style.left = `${x}px`;
+      node.style.top = `${y}px`;
+      // Lead particles are the lightest, so the trail itself reads as a gradient.
+      node.style.background = MEMORY_PARTICLE_TINTS[index % MEMORY_PARTICLE_TINTS.length];
+      particles.push({
+        node,
+        sparkle,
+        baseScale: sparkle ? 0.34 + Math.random() * 0.42 : 0.62 + Math.random() * 0.5,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (70 + Math.random() * 180),
+        phase: Math.random() * Math.PI * 2,
+      });
+      batch.appendChild(node);
+    }
+    document.body.appendChild(batch);
+
+    let pending = particles.length;
+    let landed = false;
+    const land = () => {
+      if (landed) return;
+      landed = true;
+      particles.forEach((particle) => particle.node.remove());
+      trail.remove();
+      pulseMemoryIcon();
+    };
+    const particleDone = () => {
+      pending -= 1;
+      if (pending <= 0) land();
+    };
+
+    particles.forEach((particle, index) => {
+      // Scatter the start a little; the offset decays to zero so every particle
+      // still converges exactly on the icon.
+      const spreadX = (Math.random() - 0.5) * 34;
+      const spreadY = (Math.random() - 0.5) * 34;
+      const wobble = (Math.random() - 0.5) * 0.5;
+      const frames: Keyframe[] = [];
+      for (let step = 0; step <= MEMORY_ARC_SAMPLES; step += 1) {
+        const t = step / MEMORY_ARC_SAMPLES;
+        const u = 1 - t;
+        const px = 2 * u * t * controlX * (1 + wobble * u) + t * t * dx + spreadX * u;
+        const py = 2 * u * t * controlY * (1 + wobble * u) + t * t * dy + spreadY * u;
+        const envelope = t < 0.22 ? 0.35 + (t / 0.22) * 0.75 : 1.1 - ((t - 0.22) / 0.78) * 0.95;
+        // Sparkles twinkle on the way up; motes just travel.
+        const twinkle = particle.sparkle ? 0.76 + 0.24 * Math.sin(t * Math.PI * 3 + particle.phase) : 1;
+        const scale = particle.baseScale * envelope * twinkle;
+        const opacity = t < 0.12 ? t / 0.12 : t > 0.82 ? (1 - t) / 0.18 : 1;
+        frames.push({
+          offset: t,
+          transform: `translate(${px}px, ${py}px) rotate(${particle.spin * t}deg) scale(${scale})`,
+          opacity,
+        });
+      }
+      const flight = particle.node.animate(frames, {
+        duration: MEMORY_FLIGHT_MS + Math.random() * 260,
+        delay: index * 40 + Math.random() * 60,
+        easing: "cubic-bezier(.35,.02,.2,1)",
+        fill: "backwards",
+      });
+      flight.finished.then(particleDone, particleDone);
+    });
+
+    // Safety net in case the animations are discarded before they ever finish.
+    if (memoryFlightTimerRef.current !== null) window.clearTimeout(memoryFlightTimerRef.current);
+    memoryFlightTimerRef.current = window.setTimeout(land, MEMORY_FLIGHT_MS + 1400);
+  }
+
+  function addMemory(pin: ConversationPin) {
+    setExperience((current) => current ? {
+      ...current,
+      conversation_tools: { ...current.conversation_tools, pins: [...current.conversation_tools.pins, pin] },
+    } : current);
+  }
+
+  async function copyMessage(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      showToast("Copied", "info");
+    } catch {
+      showToast("Copy failed", "error");
+    }
+  }
+
+  async function saveMemory(message: ChatMessage, source: HTMLElement | null, surface: "desktop" | "mobile") {
+    if (guest) { setSignInOpen(true); return; }
+    const content = message.content.trim();
+    if (!conversation || !content || memoryBusyRef.current) return;
+    const key = messageMemoryKey(message);
+    if (savedMemoryKeys.has(key)) {
+      flyToMemoryIcon(source, surface);
+      showToast("Memory already saved", "info");
+      return;
+    }
+    // Start the orb before any state change so it is already running on the
+    // compositor by the time React commits.
+    flyToMemoryIcon(source, surface);
+    memoryBusyRef.current = true;
+    try {
+      const result = await createConversationPin(conversation.id, { content, message_id: key });
+      addMemory(result.pin);
+      showToast("Memory saved");
+    } catch (memoryError) {
+      if (redirectIfUnauthorized(memoryError)) return;
+      // The pins endpoint is still on the backend roadmap (TECH-06 §7.4). Until it
+      // ships, keep the memory for this session so the panel matches what the user
+      // just did; the server copy takes over once the endpoint exists.
+      if (memoryError instanceof ApiError && [404, 405, 501].includes(memoryError.status)) {
+        addMemory({ id: `local:${key}`, content, sort_order: memories.length, message_id: key });
+        showToast("Memory saved");
+        return;
+      }
+      showToast("Couldn't save this memory", "error");
+    } finally {
+      memoryBusyRef.current = false;
+    }
+  }
+
+  function openMemoryComposer(surface: "desktop" | "mobile", pin?: ConversationPin) {
+    if (guest) { setSignInOpen(true); return; }
+    setMemoryEditing(pin ?? null);
+    setMemoryDraft(pin ? pin.content : "");
+    setMemoryPanelOpen(false);
+    setMobileSheet(null);
+    setMemoryComposer(surface);
+  }
+
+  function closeMemoryComposer() {
+    setMemoryComposer(null);
+    setMemoryDraft("");
+    setMemoryEditing(null);
+  }
+
+  function finishManualMemory(editing: boolean) {
+    closeMemoryComposer();
+    pulseMemoryIcon();
+    showToast(editing ? "Memory updated" : "Memory saved");
+  }
+
+  function replaceMemory(pin: ConversationPin) {
+    setExperience((current) => current ? {
+      ...current,
+      conversation_tools: {
+        ...current.conversation_tools,
+        pins: current.conversation_tools.pins.map((item) => item.id === pin.id ? pin : item),
+      },
+    } : current);
+  }
+
+  async function saveManualMemory() {
+    const content = memoryDraft.trim();
+    if (!conversation || !content || memorySaving) return;
+    const editing = memoryEditing;
+    if (editing && editing.content === content) { closeMemoryComposer(); return; }
+    setMemorySaving(true);
+    try {
+      if (editing) {
+        const result = await updateConversationPin(conversation.id, editing.id, { content });
+        replaceMemory(result.pin);
+      } else {
+        // No message_id: this memory did not come from a bubble, so nothing should
+        // mark a reply as already saved because of it.
+        const result = await createConversationPin(conversation.id, { content, message_id: null });
+        addMemory(result.pin);
+      }
+      finishManualMemory(Boolean(editing));
+    } catch (memoryError) {
+      if (redirectIfUnauthorized(memoryError)) return;
+      // Same fallback as saveMemory: keep it for this session until the pins
+      // endpoint ships, so the panel matches what the user just wrote. A pin that
+      // only exists locally can never be updated on the server either.
+      const offline = memoryError instanceof ApiError && [404, 405, 501].includes(memoryError.status);
+      if (offline && editing) {
+        replaceMemory({ ...editing, content });
+        finishManualMemory(true);
+        return;
+      }
+      if (offline) {
+        uidRef.current += 1;
+        addMemory({ id: `local:manual:${uidRef.current}`, content, sort_order: memories.length, message_id: null });
+        finishManualMemory(false);
+        return;
+      }
+      showToast(editing ? "Couldn't update this memory" : "Couldn't save this memory", "error");
+    } finally {
+      setMemorySaving(false);
+    }
+  }
+
+  function onMemoryDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape") { event.preventDefault(); closeMemoryComposer(); return; }
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void saveManualMemory(); }
+  }
+
+  function cancelLongPress() {
+    if (longPressRef.current.timer !== null) {
+      window.clearTimeout(longPressRef.current.timer);
+      longPressRef.current.timer = null;
+    }
+  }
+
+  // Mobile has no hover, so the message actions live behind a long press on the
+  // character's bubble, matching the platform-native context-menu gesture.
+  function beginLongPress(event: React.TouchEvent<HTMLDivElement>, message: ChatMessage) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const anchor = event.currentTarget;
+    cancelLongPress();
+    longPressRef.current.x = touch.clientX;
+    longPressRef.current.y = touch.clientY;
+    longPressRef.current.timer = window.setTimeout(() => {
+      longPressRef.current.timer = null;
+      if (typeof navigator.vibrate === "function") navigator.vibrate(12);
+      setMessageMenu({
+        message,
+        x: Math.min(Math.max(touch.clientX - 24, 10), window.innerWidth - 178),
+        y: Math.min(touch.clientY + 10, window.innerHeight - 126),
+        anchor,
+      });
+    }, 460);
+  }
+
+  function moveLongPress(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0];
+    if (!touch) return;
+    const moved = Math.abs(touch.clientX - longPressRef.current.x) > 8 || Math.abs(touch.clientY - longPressRef.current.y) > 8;
+    if (moved) cancelLongPress();
+  }
+
   return (
     <main className="reference-chat-shell" style={{ "--accent": character.accent_color } as React.CSSProperties}>
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
@@ -616,6 +1067,12 @@ function ChatContent() {
             <b>{displayName}</b>
             {primaryBadge && <i title={primaryBadge.display_name}>✦</i>}
           </button>
+          <button
+            ref={mobileMemoryIconRef}
+            className="mobile-round-button mobile-memory-button"
+            onClick={() => setMobileSheet("pinned")}
+            aria-label="查看本次对话的记忆"
+          ><MemoryIcon />{memories.length > 0 && <i>{memories.length}</i>}</button>
           <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
         </header>
 
@@ -638,18 +1095,30 @@ function ChatContent() {
             {messages.map((message) => {
               const status = getMessageStatus(message);
               const waiting = !message.content && (status === "sending" || status === "streaming");
+              const memoryKey = messageMemoryKey(message);
+              const saved = savedMemoryKeys.has(memoryKey);
+              const canSave = message.role === "assistant" && !waiting && status !== "failed" && Boolean(message.content);
+              const pressed = messageMenu?.message.id === message.id;
               return (
               <div className={`mobile-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={`mobile-${message.id}`}>
                 {message.role === "assistant" && <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>}
                 <div className="mobile-message-stack">
                   {waiting
                     ? <div className="typing"><i /><i /><i /></div>
-                    : <div className="mobile-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
+                    : <div
+                        className={`mobile-bubble${pressed ? " is-pressed" : ""}${canSave ? " is-pressable" : ""}`}
+                        onTouchStart={canSave ? (event) => beginLongPress(event, message) : undefined}
+                        onTouchMove={canSave ? moveLongPress : undefined}
+                        onTouchEnd={canSave ? cancelLongPress : undefined}
+                        onTouchCancel={canSave ? cancelLongPress : undefined}
+                        onContextMenu={canSave ? (event) => event.preventDefault() : undefined}
+                      >{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
                   <small>{messageStatusText(message)}</small>
                 </div>
               </div>
             );})}
           </div>
+          {canContinue && <button className="mobile-continue-turn" onClick={() => void continueTurn()} aria-label="让角色继续这段回复"><ContinueIcon /></button>}
           {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
         </section>
 
@@ -658,7 +1127,7 @@ function ChatContent() {
           {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
           <div className="mobile-tool-row">
             <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看本次对话的记忆"><CommentIcon /><span className="mobile-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
             <button type="button" className="mobile-inspire-btn" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
@@ -721,12 +1190,17 @@ function ChatContent() {
           <div className="mobile-sheet-backdrop mobile-tool-backdrop" onClick={() => setMobileSheet(null)}>
             <section className="mobile-tool-sheet" onClick={(event) => event.stopPropagation()}>
               <div className="mobile-sheet-handle" />
-              <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
+              <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Memory" : "Chat settings"}</b><div className="mobile-sheet-actions">{mobileSheet === "pinned" && <button onClick={() => openMemoryComposer("mobile", manualMemory ?? undefined)} aria-label={manualMemory ? "编辑手写记忆" : "手动写一条记忆"}>{manualMemory ? <EditIcon /> : <PlusIcon />}</button>}<button onClick={() => setMobileSheet(null)}><CloseIcon /></button></div></header>
               {mobileSheet === "model" && <div className="mobile-model-list">{(guest ? GUEST_MODEL_TEASER : models).map((model) => (
                 <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
-              {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
+              {mobileSheet === "pinned" && <div className="mobile-sheet-list">{memories.length === 0 ? <p><NoteIcon />No memories saved yet — long-press a reply, or tap ＋ to write one</p> : orderedMemories.map((pin) => (
+                <div className="memory-entry" key={pin.id}>
+                  <p className="memory-item">{pin.content}</p>
+                  {pin === manualMemory && <button className="memory-edit" onClick={() => openMemoryComposer("mobile", pin)} aria-label="编辑这条记忆"><EditIcon /></button>}
+                </div>
+              ))}</div>}
               {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
             </section>
           </div>
@@ -794,8 +1268,30 @@ function ChatContent() {
               <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
+              <button
+                ref={desktopMemoryIconRef}
+                className="more-pill memory-pill has-tooltip"
+                data-tooltip={memories.length > 0 ? `Memory · ${memories.length} saved` : "Memory"}
+                aria-expanded={memoryPanelOpen}
+                onClick={() => { setShowChatMenu(false); setMemoryPanelOpen((value) => !value); }}
+                aria-label="查看本次对话的记忆"
+              ><MemoryIcon />{memories.length > 0 && <i>{memories.length}</i>}</button>
+              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => { setMemoryPanelOpen(false); setShowChatMenu((value) => !value); }} aria-label="对话布局与设置"><MoreIcon /></button>
             </div>
+            {memoryPanelOpen && (
+              <div className="memory-popover">
+                <header><b>Memory</b><div className="memory-popover-actions"><button className="memory-add" onClick={() => openMemoryComposer("desktop", manualMemory ?? undefined)} aria-label={manualMemory ? "编辑手写记忆" : "手动写一条记忆"}>{manualMemory ? <EditIcon /> : <PlusIcon />}</button><button onClick={() => setMemoryPanelOpen(false)} aria-label="关闭记忆面板">×</button></div></header>
+                {memories.length === 0
+                  ? <p className="empty-pin"><NoteIcon /><strong>No memories saved yet</strong></p>
+                  : <div className="memory-list">{orderedMemories.map((pin) => (
+                      <div className="memory-entry" key={pin.id}>
+                        <p>{pin.content}</p>
+                        {pin === manualMemory && <button className="memory-edit" onClick={() => openMemoryComposer("desktop", pin)} aria-label="编辑这条记忆"><EditIcon /></button>}
+                      </div>
+                    ))}</div>}
+                <small>Saved memories act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
+              </div>
+            )}
             {showChatMenu && (
               <div className="chat-settings-popover">
                 <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>Reset layout</b><small>Show profile and standard chat width</small></div></button>
@@ -824,6 +1320,9 @@ function ChatContent() {
               {messages.map((message) => {
                 const status = getMessageStatus(message);
                 const waiting = !message.content && (status === "sending" || status === "streaming");
+                const memoryKey = messageMemoryKey(message);
+                const saved = savedMemoryKeys.has(memoryKey);
+                const canSave = message.role === "assistant" && !waiting && status !== "failed" && Boolean(message.content);
                 return (
                 <div className={`reference-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={message.id}>
                   {message.role === "assistant" && <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>}
@@ -831,11 +1330,30 @@ function ChatContent() {
                     {waiting
                       ? <div className="typing"><i /><i /><i /></div>
                       : <div className="reference-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
+                    {canSave && (
+                      <div className="message-actions">
+                        <button
+                          type="button"
+                          className={`message-action has-tooltip${saved ? " is-saved" : ""}`}
+                          data-tooltip={saved ? "Saved to memory" : "Save memory"}
+                          aria-label={saved ? "已保存为记忆" : "保存为记忆"}
+                          onClick={(event) => void saveMemory(message, event.currentTarget, "desktop")}
+                        ><MemoryIcon /></button>
+                        <button
+                          type="button"
+                          className="message-action has-tooltip"
+                          data-tooltip="Copy"
+                          aria-label="复制这条消息"
+                          onClick={() => void copyMessage(message.content)}
+                        ><CopyIcon /></button>
+                      </div>
+                    )}
                     <small>{messageStatusText(message)}</small>
                   </div>
                 </div>
               );})}
             </div>
+            {canContinue && <button className="continue-turn has-tooltip" data-tooltip="Continue" onClick={() => void continueTurn()} aria-label="让角色继续这段回复"><ContinueIcon /></button>}
             {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
           </section>
 
@@ -866,16 +1384,8 @@ function ChatContent() {
                 ) : <p className="empty-pin"><RoleIcon /><strong>No role card selected</strong></p>}
               </div>
             )}
-            {composerPanel === "pinned" && (
-              <div className="composer-popover info-popover">
-                <header><b>Pinned</b><button onClick={() => setComposerPanel(null)}>×</button></header>
-                {conversationTools.pins.length === 0 ? <p className="empty-pin"><NoteIcon /><strong>No pinned memories</strong></p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}
-                <small>Pinned notes act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
-              </div>
-            )}
             <div className="composer-tools">
               <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
-              <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
               <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
@@ -906,6 +1416,64 @@ function ChatContent() {
       </div>
 
       <footer className="chat-reference-footer"><span>Supported Cards</span><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM</small></footer>
+
+      {messageMenu && (
+        <div className="message-menu-backdrop" onClick={() => setMessageMenu(null)} onTouchStart={() => setMessageMenu(null)}>
+          <div className="message-menu" style={{ left: messageMenu.x, top: messageMenu.y }} onClick={(event) => event.stopPropagation()} onTouchStart={(event) => event.stopPropagation()}>
+            <button onClick={() => { const target = messageMenu; setMessageMenu(null); void copyMessage(target.message.content); }}><CopyIcon />Copy</button>
+            <button onClick={() => { const target = messageMenu; setMessageMenu(null); void saveMemory(target.message, target.anchor, "mobile"); }}>
+              <MemoryIcon />{savedMemoryKeys.has(messageMemoryKey(messageMenu.message)) ? "Saved to memory" : "Save memory"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && <div key={toast.id} className={`memory-toast is-${toast.tone}`} role="status" aria-live="polite">{toast.text}</div>}
+
+      {memoryComposer === "desktop" && (
+        <div className="modal-backdrop" onClick={() => { if (!memoryDraft.trim()) closeMemoryComposer(); }}>
+          <section className="memory-composer" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <b>{memoryEditing ? "Edit Memory" : "Add Memory"}</b>
+              <div>
+                <button className="memory-composer-done" disabled={!memoryDraft.trim() || memorySaving} onClick={() => void saveManualMemory()}>{memorySaving ? "Saving…" : "Done"}</button>
+                <button className="memory-composer-close" onClick={closeMemoryComposer} aria-label="关闭"><CloseIcon /></button>
+              </div>
+            </header>
+            <textarea
+              ref={memoryDraftRef}
+              value={memoryDraft}
+              maxLength={MEMORY_DRAFT_MAX}
+              placeholder="Write something you want the character to remember…"
+              onChange={(event) => setMemoryDraft(event.target.value)}
+              onKeyDown={onMemoryDraftKeyDown}
+            />
+            <footer>{memoryDraft.length}/{MEMORY_DRAFT_MAX} characters</footer>
+          </section>
+        </div>
+      )}
+
+      {memoryComposer === "mobile" && (
+        <section className="memory-editor">
+          <header>
+            <button onClick={closeMemoryComposer} aria-label="返回"><BackIcon /></button>
+            <b>{memoryEditing ? "Edit Memory" : "Add Memory"}</b>
+            <button className="memory-editor-help" title="Saved memories act as long-term facts in later turns" aria-label="记忆说明"><HelpIcon /></button>
+          </header>
+          <div className="memory-editor-field">
+            <textarea
+              ref={memoryDraftRef}
+              value={memoryDraft}
+              maxLength={MEMORY_DRAFT_MAX}
+              placeholder="Write something you want the character to remember…"
+              onChange={(event) => setMemoryDraft(event.target.value)}
+              onKeyDown={onMemoryDraftKeyDown}
+            />
+            <small>{memoryDraft.length} / {MEMORY_DRAFT_MAX}</small>
+          </div>
+          <button className="memory-editor-confirm" disabled={!memoryDraft.trim() || memorySaving} onClick={() => void saveManualMemory()}>{memorySaving ? "Saving…" : "Confirm"}</button>
+        </section>
+      )}
 
       {showRestart && (
         <div className="modal-backdrop" onClick={() => setShowRestart(false)}>

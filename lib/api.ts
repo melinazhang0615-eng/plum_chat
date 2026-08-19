@@ -1,4 +1,4 @@
-import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
 
 export type { CreatorTag } from "./creator-tags";
@@ -312,6 +312,21 @@ export function updateModel(conversationId: string, modelProfile: ModelProfile["
   );
 }
 
+export function createConversationPin(conversationId: string, input: { content: string; message_id?: string | null }) {
+  return request<{ status: string; pin: ConversationPin }>(
+    `/conversations/${conversationId}/pins`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Rewrite a memory the user wrote by hand. Only manual pins are editable. */
+export function updateConversationPin(conversationId: string, pinId: string, input: { content: string }) {
+  return request<{ status: string; pin: ConversationPin }>(
+    `/conversations/${conversationId}/pins/${pinId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
 export function restartConversation(conversationId: string) {
   return request<{
     status: string;
@@ -336,7 +351,24 @@ export function setCharacterFavorite(characterId: string, active: boolean) {
   );
 }
 
-export function sendTurn(conversationId: string, text: string, requestId: string, guest = false) {
+export type TurnKind = "message" | "continue";
+
+/**
+ * `continue` asks the character to keep going from its last reply. The backend
+ * rejects any text on a continue action and does not persist an inbound message,
+ * so no user bubble is created. Guests must always send the action envelope.
+ */
+function turnBody(text: string, requestId: string, guest: boolean, kind: TurnKind) {
+  return JSON.stringify({
+    client_message_id: requestId,
+    idempotency_key: requestId,
+    ...(kind === "continue"
+      ? { action: { kind: "continue" } }
+      : guest ? { action: { kind: "message", text } } : { text }),
+  });
+}
+
+export function sendTurn(conversationId: string, text: string, requestId: string, guest = false, kind: TurnKind = "message") {
   return request<{
     status: string;
     reply: { message_id: string | null; text: string };
@@ -346,11 +378,7 @@ export function sendTurn(conversationId: string, text: string, requestId: string
     deduplicated: boolean;
   }>(`/conversations/${conversationId}/turns`, {
     method: "POST",
-    body: JSON.stringify({
-      client_message_id: requestId,
-      idempotency_key: requestId,
-      ...(guest ? { action: { kind: "message", text } } : { text }),
-    }),
+    body: turnBody(text, requestId, guest, kind),
   });
 }
 
@@ -371,6 +399,7 @@ export async function sendTurnStream({
   text,
   requestId,
   guest = false,
+  kind = "message",
   signal,
   onEvent,
 }: {
@@ -378,6 +407,7 @@ export async function sendTurnStream({
   text: string;
   requestId: string;
   guest?: boolean;
+  kind?: TurnKind;
   signal: AbortSignal;
   onEvent: (event: TurnStreamEvent) => void;
 }): Promise<void> {
@@ -392,11 +422,7 @@ export async function sendTurnStream({
       "Content-Type": "application/json",
       ...(csrf ? { "X-Plum-CSRF": decodeURIComponent(csrf) } : {}),
     },
-    body: JSON.stringify({
-      client_message_id: requestId,
-      idempotency_key: requestId,
-      ...(guest ? { action: { kind: "message", text } } : { text }),
-    }),
+    body: turnBody(text, requestId, guest, kind),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { detail?: unknown };

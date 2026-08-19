@@ -206,6 +206,33 @@ svg { display: block; }
 .conversation-stat-pill:disabled { opacity: .72; cursor: not-allowed; }
 .more-pill { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; color: #fff; background: rgba(12,8,9,.32); backdrop-filter: blur(10px); cursor: pointer; }
 .more-pill svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.memory-pill { position: relative; }
+.memory-pill i { position: absolute; top: -3px; right: -3px; min-width: 13px; height: 13px; display: grid; place-items: center; padding: 0 3px; border-radius: 999px; color: #2a1533; background: #e3c4ff; font-size: 8px; font-style: normal; font-weight: 700; line-height: 1; }
+/* A glow that blooms and fades in place — no expanding ring. It lives on a
+   pseudo-element and animates opacity only: the pill itself carries a
+   backdrop-filter, and repainting it would force a full blur re-evaluation. */
+.memory-pill::before, .mobile-memory-button::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.62) 0%, rgba(255,255,255,.4) 26%, rgba(206,172,255,.42) 52%, rgba(186,150,255,0) 74%); opacity: 0; pointer-events: none; will-change: opacity; }
+.memory-pill.is-pulsing::before, .mobile-memory-button.is-pulsing::before { animation: memoryGlow .86s ease-out; }
+@keyframes memoryGlow {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* Gradient and position are set inline; the arc is sampled into keyframes and
+   played through the Web Animations API, so only transform/opacity move.
+   No `contain` here — it would clip the drop-shadow glow. */
+.memory-particle { position: fixed; z-index: 80; opacity: 0; pointer-events: none; will-change: transform, opacity; }
+/* Four-point star glint, matching the ✦ used for badges elsewhere. */
+.memory-particle.is-sparkle { width: 16px; height: 16px; margin: -8px 0 0 -8px; clip-path: path("M8 0C8.4 4.27 11.73 7.6 16 8C11.73 8.4 8.4 11.73 8 16C7.6 11.73 4.27 8.4 0 8C4.27 7.6 7.6 4.27 8 0Z"); filter: drop-shadow(0 0 2px rgba(255,255,255,.6)); }
+.memory-particle.is-mote { width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; border-radius: 50%; filter: drop-shadow(0 0 2px rgba(255,255,255,.5)); }
+/* Full-viewport overlay; the arc is stroked in viewport pixel coordinates. */
+.memory-trail { position: fixed; z-index: 79; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* Softened off the hairline so it reads as a wisp rather than a drawn stroke. */
+.memory-trail path { filter: blur(.6px); }
+.memory-toast { position: fixed; z-index: 85; left: 50%; top: 50%; max-width: min(78vw, 320px); padding: 11px 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; color: #fff; background: rgba(24,16,20,.92); box-shadow: 0 18px 50px rgba(0,0,0,.45); backdrop-filter: blur(18px); font-size: 12px; font-weight: 600; text-align: center; pointer-events: none; transform: translate(-50%,-50%); animation: memoryToastIn .2s ease both; }
+.memory-toast.is-ok { border-color: rgba(198,150,255,.42); }
+.memory-toast.is-error { color: #ffdfe4; border-color: rgba(255,145,162,.42); }
+@keyframes memoryToastIn { from { opacity: 0; transform: translate(-50%,-46%) scale(.96); } }
 .chat-settings-popover { position: absolute; z-index: 12; top: 51px; right: 14px; width: 235px; overflow: hidden; padding: 5px; border: 1px solid rgba(255,255,255,.16); border-radius: 11px; background: rgba(27,18,21,.96); box-shadow: 0 18px 50px rgba(0,0,0,.38); backdrop-filter: blur(22px); }
 .chat-settings-popover button { width: 100%; display: grid; grid-template-columns: 25px 1fr; gap: 8px; padding: 9px; border: 0; border-radius: 7px; color: #fff; text-align: left; background: transparent; cursor: pointer; }
 .chat-settings-popover button:hover { background: rgba(255,255,255,.07); }
@@ -230,10 +257,23 @@ svg { display: block; }
 .reference-message-row.failed .reference-bubble { color: #fff; background: rgba(115,42,50,.8); }
 .reference-message-row.cancelled .reference-bubble { color: rgba(255,255,255,.68); border-style: dashed; background: rgba(17,11,13,.22); }
 .reference-message-stack small { display: block; margin-top: 3px; color: rgba(255,255,255,.35); font-size: 7px; }
+.message-actions { height: 18px; display: flex; align-items: center; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity .15s ease; }
+.reference-message-row:hover .message-actions, .message-actions:focus-within { opacity: 1; }
+.message-action { position: relative; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; color: rgba(255,255,255,.6); background: rgba(255,255,255,.06); cursor: pointer; transition: color .15s ease, background .15s ease, border-color .15s ease; }
+.message-action:hover:not(:disabled) { color: #fff; background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.18); }
+.message-action:disabled { opacity: .5; cursor: progress; }
+.message-action.is-saved { color: #ecd4ff; border-color: rgba(198,150,255,.45); background: rgba(120,74,182,.34); }
+.message-action svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .typing { height: 30px; display: flex; align-items: center; gap: 4px; padding: 0 12px; border-radius: 3px 12px 12px; background: rgba(17,11,13,.4); }
 .typing i { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.65); animation: bounce 1.1s infinite; }
 .typing i:nth-child(2) { animation-delay: .14s; }.typing i:nth-child(3) { animation-delay: .28s; }
 @keyframes bounce { 40% { transform: translateY(-4px); } }
+/* Same corner as .scroll-latest; the two never show at once because Continue is
+   hidden whenever the reader has scrolled away from the latest message. */
+.continue-turn { position: sticky; z-index: 5; left: calc(100% - 46px); bottom: 10px; width: 30px; height: 30px; display: grid; place-items: center; margin-top: -40px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; color: rgba(255,255,255,.82); background: rgba(255,255,255,.07); backdrop-filter: blur(12px); cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.continue-turn:hover { color: #fff; background: rgba(255,255,255,.13); border-color: rgba(255,255,255,.2); }
+.continue-turn:active { background: rgba(255,255,255,.18); }
+.continue-turn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .scroll-latest { position: sticky; z-index: 5; left: calc(100% - 46px); bottom: 10px; width: 30px; height: 30px; display: grid; place-items: center; margin-top: -40px; padding: 0; border: 1px solid rgba(255,255,255,.09); border-radius: 50%; color: rgba(255,255,255,.8); background: rgba(255,255,255,.06); backdrop-filter: blur(12px); cursor: pointer; transition: background .15s ease, border-color .15s ease; }
 .scroll-latest:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.14); }
 .scroll-latest:active { background: rgba(255,255,255,.14); }
@@ -250,6 +290,55 @@ svg { display: block; }
 .composer-popover > header { padding: 7px 8px 9px; border-bottom: 1px solid rgba(255,255,255,.09); }.composer-popover > header b { display: block; font-size: 11px; }.composer-popover > header small { display: block; margin-top: 2px; color: rgba(255,255,255,.44); font-size: 8px; }
 .model-popover > button { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 9px 8px; border: 0; border-radius: 8px; color: #fff; text-align: left; background: transparent; cursor: pointer; }.model-popover > button:hover,.model-popover > button.selected { background: rgba(255,255,255,.07); }.model-popover > button span b,.model-popover > button span small { display: block; }.model-popover > button span b { font-size: 10px; }.model-popover > button span small { margin-top: 2px; color: rgba(255,255,255,.42); font-size: 8px; }.model-popover > button i { color: #e6c9ff; font-style: normal; }
 .info-popover > header { display: flex; align-items: center; justify-content: space-between; }.info-popover > header button { border: 0; color: rgba(255,255,255,.55); background: transparent; cursor: pointer; }.info-popover > p { display: flex; align-items: center; gap: 8px; margin: 10px 8px 7px; font-size: 10px; }.info-popover > small { display: block; padding: 0 8px 8px; color: rgba(255,255,255,.48); font-size: 8px; line-height: 1.55; }.test-user-avatar { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: #76525d; }.empty-pin svg { width: 23px; height: 23px; fill: none; stroke: #dac4ca; stroke-width: 1; }
+/* Drops from the memory icon in the toolbar, mirroring .chat-settings-popover. */
+.memory-popover { position: absolute; z-index: 13; top: 51px; right: 52px; width: 268px; padding: 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 11px; color: #fff; background: rgba(27,18,21,.96); box-shadow: 0 18px 50px rgba(0,0,0,.38); backdrop-filter: blur(22px); animation: memoryPanelIn .14s ease both; }
+@keyframes memoryPanelIn { from { opacity: 0; transform: translateY(-4px); } }
+.memory-popover > header { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 8px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.memory-popover > header b { font-size: 11px; }
+.memory-popover > header button { width: 20px; height: 20px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; color: rgba(255,255,255,.55); background: transparent; cursor: pointer; }
+.memory-popover > header button:hover { color: #fff; background: rgba(255,255,255,.08); }
+.memory-list { max-height: 260px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding: 6px 2px 2px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.15) transparent; }
+.memory-list p { margin: 0; padding: 10px 11px; border-radius: 8px; color: rgba(255,255,255,.84); background: rgba(255,255,255,.055); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.memory-list p:last-child { margin-bottom: 0; }
+/* A memory row carries the text plus, for hand-written ones, an edit control
+   parked on the right edge. */
+.memory-entry { display: flex; align-items: flex-start; gap: 4px; }
+.memory-entry > p { flex: 1; min-width: 0; }
+.memory-edit { width: 22px; height: 22px; display: grid; place-items: center; flex: 0 0 auto; margin-top: 6px; padding: 0; border: 0; border-radius: 6px; color: rgba(255,255,255,.5); background: transparent; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.memory-edit:hover { color: #fff; background: rgba(255,255,255,.1); }
+.memory-edit svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.memory-popover > .empty-pin { display: flex; align-items: center; gap: 8px; margin: 12px 8px; color: rgba(255,255,255,.6); font-size: 10px; }
+.memory-popover > small { display: block; padding: 8px 8px 4px; color: rgba(255,255,255,.42); font-size: 8px; line-height: 1.5; }
+
+/* Writing a memory by hand — opened from the ＋ next to the memory control.
+   Desktop gets a centred dialog; mobile gets a full page, because the keyboard
+   leaves no room for a floating card. */
+.memory-popover-actions, .mobile-sheet-actions { display: flex; align-items: center; gap: 4px; }
+.memory-popover-actions .memory-add svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.memory-composer { width: min(620px, 100%); max-height: min(560px, 86dvh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 16px; color: #fff; background: #27191c; box-shadow: 0 30px 100px rgba(0,0,0,.45); }
+.memory-composer > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 16px 13px 22px; }
+.memory-composer > header b { font-size: 16px; }
+.memory-composer > header > div { display: flex; align-items: center; gap: 8px; }
+.memory-composer-done { height: 32px; padding: 0 19px; border: 0; border-radius: 8px; color: #201316; background: #eadcff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.memory-composer-done:disabled { color: rgba(255,255,255,.34); background: rgba(255,255,255,.08); cursor: default; }
+.memory-composer-close { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: rgba(255,255,255,.7); background: rgba(255,255,255,.06); cursor: pointer; }
+.memory-composer-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.memory-composer textarea { flex: 1; min-height: 210px; margin: 0 10px; padding: 4px 12px; border: 0; outline: 0; resize: none; color: #fff; background: transparent; font: inherit; font-size: 14px; line-height: 1.75; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+.memory-composer textarea::placeholder { color: rgba(255,255,255,.33); }
+.memory-composer > footer { padding: 13px 22px 18px; color: rgba(255,255,255,.44); font-size: 11px; text-align: center; }
+.memory-editor { position: fixed; z-index: 60; inset: 0; display: flex; flex-direction: column; padding: max(8px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)); color: #fff; background: linear-gradient(180deg, #241519, #150c0e); }
+.memory-editor > header { height: 52px; flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.memory-editor > header b { font-size: 19px; }
+.memory-editor > header button { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; padding: 0; border: 0; border-radius: 50%; color: #fff; background: transparent; cursor: pointer; }
+.memory-editor > header button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.memory-editor-help { color: rgba(255,255,255,.45); }
+.memory-editor-help svg { width: 18px; height: 18px; }
+.memory-editor-field { position: relative; height: 300px; max-height: 46dvh; flex: 0 1 auto; display: flex; margin-top: 12px; padding: 14px 14px 32px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; background: rgba(255,255,255,.05); }
+.memory-editor-field textarea { flex: 1; min-height: 0; border: 0; outline: 0; resize: none; color: #fff; background: transparent; font: inherit; font-size: 15px; line-height: 1.7; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+.memory-editor-field textarea::placeholder { color: rgba(255,255,255,.3); }
+.memory-editor-field small { position: absolute; right: 14px; bottom: 11px; color: rgba(255,255,255,.4); font-size: 11px; }
+.memory-editor-confirm { height: 54px; flex: 0 0 auto; margin-top: auto; border: 0; border-radius: 999px; color: #201316; background: #eadcff; font-size: 16px; font-weight: 700; cursor: pointer; }
+.memory-editor-confirm:disabled { color: rgba(255,255,255,.38); background: rgba(255,255,255,.09); }
 .reference-composer { min-height: 48px; margin-top: 12px; display: flex; align-items: center; gap: 12px; padding: 8px 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 16px; background: rgba(255,255,255,.055); box-shadow: 0 6px 20px rgba(0,0,0,.28); backdrop-filter: blur(20px); transition: border-color .15s ease, box-shadow .15s ease; }
 .reference-composer:focus-within { border-color: rgba(255,255,255,.18); box-shadow: 0 8px 26px rgba(0,0,0,.34); }
 .inspiration-button { width: 20px; height: 20px; display: grid; place-items: center; flex: 0 0 auto; padding: 0; border: 0; border-radius: 0; color: rgba(255,255,255,.55); background: transparent; cursor: pointer; transition: color .15s ease; }
@@ -386,6 +475,21 @@ svg { display: block; }
   .mobile-message-row.failed .mobile-bubble { color: #fff; background: rgba(121,43,54,.9); }
   .mobile-message-row.cancelled .mobile-bubble { color: rgba(255,255,255,.72); border-style: dashed; background: rgba(40,24,28,.38); }
   .mobile-message-stack small { display: block; margin-top: 3px; color: rgba(255,255,255,.48); font-size: 8px; text-shadow: 0 1px 5px #000; }
+  .mobile-chat-header .mobile-memory-button { position: relative; margin-left: auto; }
+  .mobile-chat-header .mobile-memory-button + .mobile-header-more { margin-left: 0; }
+  .mobile-memory-button svg { width: 23px; height: 23px; }
+  .mobile-memory-button i { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; display: grid; place-items: center; padding: 0 3px; border-radius: 999px; color: #2a1533; background: #e3c4ff; font-size: 9px; font-style: normal; font-weight: 700; line-height: 1; }
+  .mobile-bubble.is-pressable { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+  .mobile-bubble.is-pressed { border-color: rgba(206,159,255,.6); background: rgba(64,40,74,.78); }
+  .message-menu-backdrop { position: fixed; z-index: 60; inset: 0; background: rgba(4,2,3,.34); }
+  .message-menu { position: fixed; width: 168px; overflow: hidden; padding: 5px; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: rgba(32,22,26,.97); box-shadow: 0 20px 50px rgba(0,0,0,.5); backdrop-filter: blur(20px); animation: messageMenuIn .16s ease both; }
+  .message-menu button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 0; border-radius: 9px; color: #fff; background: transparent; font-size: 13px; text-align: left; }
+  .message-menu button:active { background: rgba(255,255,255,.09); }
+  .message-menu button svg { width: 17px; height: 17px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  @keyframes messageMenuIn { from { opacity: 0; transform: scale(.94); } }
+  .mobile-continue-turn { position: sticky; z-index: 4; left: calc(100% - 51px); bottom: 7px; width: 36px; height: 36px; display: grid; place-items: center; margin-top: -42px; padding: 0; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; color: #fff; background: rgba(20,13,15,.62); backdrop-filter: blur(12px); }
+  .mobile-continue-turn:active { background: rgba(20,13,15,.85); }
+  .mobile-continue-turn svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .mobile-scroll-latest { position: sticky; z-index: 4; left: calc(100% - 51px); bottom: 7px; width: 36px; height: 36px; display: grid; place-items: center; margin-top: -42px; padding: 0; border: 1px solid rgba(255,255,255,.35); border-radius: 50%; color: #fff; background: rgba(20,13,15,.7); backdrop-filter: blur(12px); }
   .mobile-scroll-latest svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 
@@ -462,7 +566,12 @@ svg { display: block; }
   .mobile-model-list > button.selected { background: rgba(255,255,255,.08); }
   .mobile-model-list span b, .mobile-model-list span small { display: block; }.mobile-model-list span b { font-size: 12px; }.mobile-model-list span small { margin-top: 4px; color: rgba(255,255,255,.45); font-size: 9px; }.mobile-model-list i { color: #d9c2ff; font-style: normal; }
   .mobile-sheet-copy { display: flex; align-items: flex-start; gap: 10px; padding: 18px 16px; }.mobile-sheet-copy b { font-size: 12px; }.mobile-sheet-copy p { margin: 5px 0 0; color: rgba(255,255,255,.58); font-size: 10px; line-height: 1.5; }
-  .mobile-sheet-list { padding: 12px 16px; }.mobile-sheet-list p { display: flex; align-items: center; gap: 8px; margin: 0; color: rgba(255,255,255,.65); font-size: 11px; }.mobile-sheet-list svg { width: 23px; height: 23px; fill: none; stroke: currentColor; }
+  .mobile-sheet-list { max-height: 46dvh; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; padding: 12px 16px; }.mobile-sheet-list p { display: flex; align-items: center; gap: 8px; margin: 0; color: rgba(255,255,255,.65); font-size: 11px; }.mobile-sheet-list svg { width: 23px; height: 23px; flex: 0 0 auto; fill: none; stroke: currentColor; }
+  .mobile-sheet-list .memory-item { display: block; margin-bottom: 0; padding: 12px 13px; border-radius: 10px; color: rgba(255,255,255,.82); background: rgba(255,255,255,.06); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+  .mobile-sheet-list .memory-entry { display: flex; align-items: flex-start; gap: 6px; }
+  .mobile-sheet-list .memory-entry > .memory-item { flex: 1; min-width: 0; }
+  .mobile-sheet-list .memory-edit { width: 30px; height: 30px; margin-top: 8px; }
+  .mobile-sheet-list .memory-edit svg { width: 17px; height: 17px; }
   .mobile-sheet-menu { padding: 7px 10px; }.mobile-sheet-menu > button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 34px 1fr; align-items: center; gap: 9px; padding: 8px 10px; border: 0; border-radius: 10px; color: #fff; text-align: left; background: transparent; }.mobile-sheet-menu > button:active { background: rgba(255,255,255,.07); }.mobile-sheet-menu svg { width: 23px; height: 23px; fill: none; stroke: #d9c3ca; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }.mobile-sheet-menu span b, .mobile-sheet-menu span small { display: block; }.mobile-sheet-menu span b { font-size: 11px; }.mobile-sheet-menu span small { margin-top: 3px; color: rgba(255,255,255,.44); font-size: 8px; }
 
   .reference-chat-shell .modal-backdrop { z-index: 80; }
