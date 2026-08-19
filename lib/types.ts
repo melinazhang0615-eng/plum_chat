@@ -161,6 +161,18 @@ export type CharacterPublicMemory = {
 };
 
 /**
+ * A long-term fact the user saved out of this conversation. Saving one from a chat
+ * bubble records the source message so the same bubble is not saved twice.
+ */
+export type ConversationPin = {
+  id: string;
+  content: string;
+  sort_order: number;
+  message_id?: string | null;
+  created_at?: string;
+};
+
+/**
  * Backend contract for the Plum product-domain data surrounding a character.
  * Messages, model execution and wallet data remain shared runtime concerns.
  */
@@ -194,7 +206,7 @@ export type CharacterExperience = {
       avatar_ref: string | null;
       description: string;
     } | null;
-    pins: Array<{ id: string; content: string; sort_order: number }>;
+    pins: ConversationPin[];
   };
   inspiration_prompts: string[];
 };
