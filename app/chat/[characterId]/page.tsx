@@ -625,7 +625,14 @@ function ChatContent() {
   // is the only row that can be edited; writing again rewrites it instead of
   // adding a second one.
   const manualMemory = memories.find((pin) => !pin.message_id) ?? null;
-  const orderedMemories = manualMemory ? [manualMemory, ...memories.filter((pin) => pin !== manualMemory)] : memories;
+  const savedMemories = memories
+    .filter((pin) => Boolean(pin.message_id))
+    .sort((left, right) => {
+      const leftTime = left.created_at ? Date.parse(left.created_at) : Number.NaN;
+      const rightTime = right.created_at ? Date.parse(right.created_at) : Number.NaN;
+      if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) return rightTime - leftTime;
+      return right.sort_order - left.sort_order;
+    });
   const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
   const quotaLabel = guestQuotaLabel(guestQuota);
@@ -949,6 +956,21 @@ function ChatContent() {
     }
   }
 
+  // The saved list fades its bottom edge to show there is more below. Toggled on the
+  // node instead of through state: every state change here re-renders both message
+  // lists, which is not worth paying for one class.
+  function markMemoryListEnd(node: HTMLDivElement | null) {
+    if (!node) return;
+    node.classList.toggle("is-end", node.scrollHeight - node.scrollTop - node.clientHeight <= 2);
+  }
+
+  function memorySavedAt(pin: ConversationPin) {
+    if (!pin.created_at) return "Saved from an AI reply";
+    const savedAt = new Date(pin.created_at);
+    if (Number.isNaN(savedAt.getTime())) return "Saved from an AI reply";
+    return `Saved ${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(savedAt)}`;
+  }
+
   function openMemoryComposer(surface: "desktop" | "mobile", pin?: ConversationPin) {
     if (guest) { setSignInOpen(true); return; }
     setMemoryEditing(pin ?? null);
@@ -1204,12 +1226,21 @@ function ChatContent() {
                 <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}<em className="model-tier">{model.tier_label}</em></b><small>{model.description}</small><small>{guest ? `Sign in to unlock · ${modelPrice(model)}` : modelPrice(model)}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
-              {mobileSheet === "pinned" && <div className="mobile-sheet-list">{memories.length === 0 ? <p><NoteIcon />No memories saved yet — long-press a reply, or tap ＋ to write one</p> : orderedMemories.map((pin) => (
-                <div className="memory-entry" key={pin.id}>
-                  <p className="memory-item">{pin.content}</p>
-                  {pin === manualMemory && <button className="memory-edit" onClick={() => openMemoryComposer("mobile", pin)} aria-label="编辑这条记忆"><EditIcon /></button>}
-                </div>
-              ))}</div>}
+              {mobileSheet === "pinned" && <div className="memory-v1 mobile-memory-v1">
+                <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
+                <section className="permanent-memory-card">
+                  <div className="permanent-memory-heading"><div><span>Permanent Memory</span><small>{manualMemory ? "1 / 1 used" : "0 / 1 used"}</small></div>{manualMemory && <button className="permanent-memory-edit" onClick={() => openMemoryComposer("mobile", manualMemory)}><EditIcon />Edit</button>}</div>
+                  {manualMemory
+                    ? <div className="permanent-memory-content"><p>{manualMemory.content}</p><small>You wrote this · Always active · {manualMemory.content.length} / {MEMORY_DRAFT_MAX}</small></div>
+                    : <button className="permanent-memory-empty" onClick={() => openMemoryComposer("mobile")}><PlusIcon /><span><b>Add your permanent memory</b><small>Preferences, boundaries, relationship details, and more</small></span></button>}
+                </section>
+                <section className="saved-memories-section">
+                  <div className="memory-section-heading"><div><span>Saved Memories</span><em>{savedMemories.length}</em></div><small>Long-press an AI reply to save it. Newest first.</small></div>
+                  {savedMemories.length === 0
+                    ? <p className="saved-memories-empty"><NoteIcon />Long-press an AI reply to save it here.</p>
+                    : <div className="memory-list" ref={markMemoryListEnd} onScroll={(event) => markMemoryListEnd(event.currentTarget)}>{savedMemories.map((pin) => <div className="memory-entry" key={pin.id}><small>{memorySavedAt(pin)}</small><p>{pin.content}</p></div>)}</div>}
+                </section>
+              </div>}
               {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button>{debugConsoleEnabled && <button onClick={() => { setMobileSheet(null); openDebugConsole(); }}><DebugIcon /><span><b>Debug console</b><small>Inspect this turn&apos;s prompt and context</small></span></button>}</div>}
             </section>
           </div>
@@ -1290,16 +1321,22 @@ function ChatContent() {
             </div>
             {memoryPanelOpen && (
               <div className="memory-popover">
-                <header><b>Memory</b><div className="memory-popover-actions"><button className="memory-add" onClick={() => openMemoryComposer("desktop", manualMemory ?? undefined)} aria-label={manualMemory ? "编辑手写记忆" : "手动写一条记忆"}>{manualMemory ? <EditIcon /> : <PlusIcon />}</button><button onClick={() => setMemoryPanelOpen(false)} aria-label="关闭记忆面板">×</button></div></header>
-                {memories.length === 0
-                  ? <p className="empty-pin"><NoteIcon /><strong>No memories saved yet</strong></p>
-                  : <div className="memory-list">{orderedMemories.map((pin) => (
-                      <div className="memory-entry" key={pin.id}>
-                        <p>{pin.content}</p>
-                        {pin === manualMemory && <button className="memory-edit" onClick={() => openMemoryComposer("desktop", pin)} aria-label="编辑这条记忆"><EditIcon /></button>}
-                      </div>
-                    ))}</div>}
-                <small>Saved memories act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
+                <header><b>Memory</b><button onClick={() => setMemoryPanelOpen(false)} aria-label="关闭记忆面板">×</button></header>
+                <div className="memory-v1">
+                  <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
+                  <section className="permanent-memory-card">
+                    <div className="permanent-memory-heading"><div><span>Permanent Memory</span><small>{manualMemory ? "1 / 1 used" : "0 / 1 used"}</small></div>{manualMemory && <button className="permanent-memory-edit" onClick={() => openMemoryComposer("desktop", manualMemory)}><EditIcon />Edit</button>}</div>
+                    {manualMemory
+                      ? <div className="permanent-memory-content"><p>{manualMemory.content}</p><small>You wrote this · Always active · {manualMemory.content.length} / {MEMORY_DRAFT_MAX}</small></div>
+                      : <button className="permanent-memory-empty" onClick={() => openMemoryComposer("desktop")}><PlusIcon /><span><b>Add your permanent memory</b><small>Preferences, boundaries, relationship details, and more</small></span></button>}
+                  </section>
+                  <section className="saved-memories-section">
+                    <div className="memory-section-heading"><div><span>Saved Memories</span><em>{savedMemories.length}</em></div><small>Long-press an AI reply to save it. Newest first.</small></div>
+                    {savedMemories.length === 0
+                      ? <p className="saved-memories-empty"><NoteIcon />Long-press an AI reply to save it here.</p>
+                      : <div className="memory-list" ref={markMemoryListEnd} onScroll={(event) => markMemoryListEnd(event.currentTarget)}>{savedMemories.map((pin) => <div className="memory-entry" key={pin.id}><small>{memorySavedAt(pin)}</small><p>{pin.content}</p></div>)}</div>}
+                  </section>
+                </div>
               </div>
             )}
             {showChatMenu && (
@@ -1445,7 +1482,7 @@ function ChatContent() {
         <div className="modal-backdrop" onClick={() => { if (!memoryDraft.trim()) closeMemoryComposer(); }}>
           <section className="memory-composer" onClick={(event) => event.stopPropagation()}>
             <header>
-              <b>{memoryEditing ? "Edit Memory" : "Add Memory"}</b>
+              <div className="memory-composer-title"><b>{memoryEditing ? "Edit Permanent Memory" : "Create Permanent Memory"}</b><small>Free · Always remembered by {displayName}</small></div>
               <div>
                 <button className="memory-composer-done" disabled={!memoryDraft.trim() || memorySaving} onClick={() => void saveManualMemory()}>{memorySaving ? "Saving…" : "Done"}</button>
                 <button className="memory-composer-close" onClick={closeMemoryComposer} aria-label="关闭"><CloseIcon /></button>
@@ -1455,7 +1492,7 @@ function ChatContent() {
               ref={memoryDraftRef}
               value={memoryDraft}
               maxLength={MEMORY_DRAFT_MAX}
-              placeholder="Write something you want the character to remember…"
+              placeholder={`What should ${displayName} always remember? Add your preferences, boundaries, important dates, relationship details, or anything else that matters…`}
               onChange={(event) => setMemoryDraft(event.target.value)}
               onKeyDown={onMemoryDraftKeyDown}
             />
@@ -1468,21 +1505,22 @@ function ChatContent() {
         <section className="memory-editor">
           <header>
             <button onClick={closeMemoryComposer} aria-label="返回"><BackIcon /></button>
-            <b>{memoryEditing ? "Edit Memory" : "Add Memory"}</b>
-            <button className="memory-editor-help" title="Saved memories act as long-term facts in later turns" aria-label="记忆说明"><HelpIcon /></button>
+            <b>{memoryEditing ? "Edit Permanent Memory" : "Permanent Memory"}</b>
+            <button className="memory-editor-help" title={`Free · Always remembered by ${displayName}`} aria-label="记忆说明"><HelpIcon /></button>
           </header>
           <div className="memory-editor-field">
             <textarea
               ref={memoryDraftRef}
               value={memoryDraft}
               maxLength={MEMORY_DRAFT_MAX}
-              placeholder="Write something you want the character to remember…"
+              placeholder={`What should ${displayName} always remember? Add preferences, boundaries, important dates, relationship details, or anything else that matters…`}
               onChange={(event) => setMemoryDraft(event.target.value)}
               onKeyDown={onMemoryDraftKeyDown}
             />
             <small>{memoryDraft.length} / {MEMORY_DRAFT_MAX}</small>
           </div>
-          <button className="memory-editor-confirm" disabled={!memoryDraft.trim() || memorySaving} onClick={() => void saveManualMemory()}>{memorySaving ? "Saving…" : "Confirm"}</button>
+          <p className="memory-editor-promise">Free · {displayName} will remember this in future conversations.</p>
+          <button className="memory-editor-confirm" disabled={!memoryDraft.trim() || memorySaving} onClick={() => void saveManualMemory()}>{memorySaving ? "Saving…" : "Save to Permanent Memory"}</button>
         </section>
       )}
 
