@@ -39,6 +39,9 @@ function StopIcon() {
 function MoreIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 10.83a.83.83 0 1 0 0-1.66.83.83 0 0 0 0 1.66ZM10 5a.83.83 0 1 0 0-1.67A.83.83 0 0 0 10 5Zm0 11.67A.83.83 0 1 0 10 15a.83.83 0 0 0 0 1.67Z" /></svg>;
 }
+function DebugIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8.5 8.5-4 3.5 4 3.5m7-7 4 3.5-4 3.5M13.5 5l-3 14" /></svg>;
+}
 function LevelIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v7c0 4.2-3.1 7.2-8 9-4.9-1.8-8-4.8-8-9V6l8-4Z" /><path d="m8 11 2.5 2.5L16.5 8M7 6.5l5-2.2 5 2.2" /></svg>;
 }
@@ -148,6 +151,9 @@ function ChatContent() {
   const [generationState, setGenerationState] = useState<"idle" | "submitting" | "streaming" | "cancelling">("idle");
   const [restarting, setRestarting] = useState(false);
   const [chatStreamingEnabled, setChatStreamingEnabled] = useState(false);
+  // Whether this viewer may open the debug console. The backend answers per identity
+  // (dev environment or beta allowlist), so the entry point simply follows that bit.
+  const [debugConsoleEnabled, setDebugConsoleEnabled] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -209,6 +215,7 @@ function ChatContent() {
       setHistory(conversationHistory.items);
       setExperience(detail.experience);
       setChatStreamingEnabled(auth.capabilities.chat_streaming === true);
+      setDebugConsoleEnabled(auth.capabilities.debug_console === true);
       setLiked(null);
       setFavorited(null);
     } catch (loadError) {
@@ -537,6 +544,19 @@ function ChatContent() {
     }
   }
 
+  /**
+   * The console opens in its own tab: reading a prompt is something you do *while* the
+   * conversation stays where it is, and the character id lets that tab offer a way back.
+   */
+  function openDebugConsole() {
+    if (!conversation) return;
+    window.open(
+      `/debug/${conversation.id}?character=${conversation.character_id}`,
+      "_blank",
+      "noopener",
+    );
+  }
+
   async function toggleLike() {
     if (guest) { setSignInOpen(true); return; }
     if (reactionBusy) return;
@@ -716,7 +736,7 @@ function ChatContent() {
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
               {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
-              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
+              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button>{debugConsoleEnabled && <button onClick={() => { setMobileSheet(null); openDebugConsole(); }}><DebugIcon /><span><b>Debug console</b><small>Inspect this turn&apos;s prompt and context</small></span></button>}</div>}
             </section>
           </div>
         )}
@@ -783,6 +803,7 @@ function ChatContent() {
               <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
+              {debugConsoleEnabled && <button className="more-pill has-tooltip" data-tooltip="Debug console" onClick={openDebugConsole} aria-label="Open debug console"><DebugIcon /></button>}
               <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label={CHAT_LABELS.settings}><MoreIcon /></button>
             </div>
             {showChatMenu && (

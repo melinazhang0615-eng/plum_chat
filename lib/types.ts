@@ -33,6 +33,12 @@ export type PlumCapabilities = {
   google_auth: boolean;
   apple_auth?: boolean;
   chat_streaming: boolean;
+  /**
+   * Whether this viewer may open the Debug Console. The backend decides (dev environment
+   * or beta allowlist) so that opening it for one account in production is a config
+   * change, not a frontend release. Optional while older backends are still deployed.
+   */
+  debug_console?: boolean;
 };
 
 export type AuthActor =
@@ -190,4 +196,73 @@ export type CharacterExperience = {
     pins: Array<{ id: string; content: string; sort_order: number }>;
   };
   inspiration_prompts: string[];
+};
+
+/**
+ * Debug Console payloads.
+ *
+ * These mirror rows the backend dumps for diagnosis, so the shapes stay deliberately open:
+ * a new column on `plum_connections` should show up in the console without a frontend
+ * release. Only the fields the page actually reasons about are named.
+ */
+export type DebugRecord = Record<string, unknown>;
+
+/** The exact request handed to the provider for one attempt. */
+export type DebugPrompt = {
+  system_prompt: string;
+  messages: Array<{ role: string; content: string }>;
+  response_format: DebugRecord;
+  request_meta: DebugRecord;
+  captured_at: string;
+  expires_at: string;
+  rendered_request_hash: string;
+  /** True when the stored text still hashes to what the snapshot recorded at dispatch. */
+  hash_matches: boolean;
+};
+
+export type DebugSnapshot = DebugRecord & {
+  id: string;
+  attempt: number;
+  request_ordinal: number;
+  status: string;
+  prompt: DebugPrompt | null;
+  block_manifest: DebugRecord | null;
+  cast: DebugRecord[];
+};
+
+export type DebugTurnDetail = {
+  turn: DebugRecord & { id: string; status: string; attempt: number };
+  ownership: DebugRecord | null;
+  conversation: DebugRecord | null;
+  snapshots: DebugSnapshot[];
+  segments: DebugRecord[];
+  billing: DebugRecord;
+};
+
+export type DebugTurnSummary = {
+  id: string;
+  status: string;
+  attempt: number;
+  provider_id: string | null;
+  model_ref: string | null;
+  finish_reason: string | null;
+  error_code: string | null;
+  created_at: string;
+  completed_at: string | null;
+  snapshot_count: number;
+  prompt_count: number;
+  has_prompt: boolean;
+};
+
+export type DebugConversationOverview = {
+  conversation: DebugRecord;
+  connection: DebugRecord | null;
+  scenario: DebugRecord | null;
+  cast_revision: DebugRecord | null;
+  cast_members: DebugRecord[];
+  relationship_states: DebugRecord[];
+  conversation_state: DebugRecord | null;
+  present_cast: DebugRecord[];
+  model_profile: DebugRecord | null;
+  language_preference: DebugRecord | null;
 };

@@ -1,4 +1,4 @@
-import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
 import { cookieValue } from "./cookies.ts";
 import { reportApiFailure, reportStreamFailure } from "./telemetry.ts";
@@ -405,6 +405,39 @@ export function redeemAccessCode(accessCode: string, displayName: string) {
 
 export function logout() {
   return request<{ status: string }>("/auth/session/current", { method: "DELETE" });
+}
+
+/**
+ * Debug Console reads.
+ *
+ * All three are owner-scoped on the server and 404 when the console is closed for this
+ * viewer, so the page treats 404 as "not available here" rather than a broken link.
+ * A turn detail can carry a large system prompt, hence the wider budget.
+ */
+const DEBUG_TIMEOUT_MS = 20_000;
+
+export function getDebugConversation(conversationId: string) {
+  return request<{ status: string } & DebugConversationOverview>(
+    `/debug/conversations/${conversationId}`,
+    undefined,
+    DEBUG_TIMEOUT_MS,
+  );
+}
+
+export function getDebugTurns(conversationId: string, limit = 30) {
+  return request<{ status: string; items: DebugTurnSummary[] }>(
+    `/debug/conversations/${conversationId}/turns?limit=${limit}`,
+    undefined,
+    DEBUG_TIMEOUT_MS,
+  );
+}
+
+export function getDebugTurn(turnId: string) {
+  return request<{ status: string } & DebugTurnDetail>(
+    `/debug/turns/${turnId}`,
+    undefined,
+    DEBUG_TIMEOUT_MS,
+  );
 }
 
 export const FEED_PAGE_LIMIT = 24;
