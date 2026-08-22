@@ -248,6 +248,7 @@ function ChatContent() {
   const [reactionBusy, setReactionBusy] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"model" | "role" | "pinned" | "more" | null>(null);
+  const [mobileCharacterBackground, setMobileCharacterBackground] = useState(false);
   const [toast, setToast] = useState<{ id: number; text: string; tone: "ok" | "info" | "error" } | null>(null);
   // A ref, not state: every state change on this page re-renders both message
   // lists (~30ms), which is not worth paying just to disable one button.
@@ -643,7 +644,6 @@ function ChatContent() {
     });
   const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
-  const guestQuotaLabel = guestQuota ? `免费体验：还可发送 ${guestQuota.remaining_turns} 条` : "免费体验聊天";
 
   function scrollToLatest() {
     nearBottomRef.current = { desktop: true, mobile: true };
@@ -1078,8 +1078,8 @@ function ChatContent() {
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
       <div className="chat-world-overlay" />
 
-      <section className="mobile-chat-shell" aria-label={`${displayName} 移动端对话`}>
-        <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />
+      <section className={`mobile-chat-shell${mobileCharacterBackground ? " has-character-background" : ""}`} aria-label={`${displayName} 移动端对话`}>
+        {mobileCharacterBackground && <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />}
         <div className="mobile-chat-shade" />
 
         <header className="mobile-chat-header">
@@ -1146,7 +1146,6 @@ function ChatContent() {
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-          {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
           <div className="mobile-tool-row">
             <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label="切换模型"><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label="查看本次对话的记忆"><CommentIcon /><span className="mobile-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
@@ -1232,7 +1231,7 @@ function ChatContent() {
                     : <div className="memory-list" ref={markMemoryListEnd} onScroll={(event) => markMemoryListEnd(event.currentTarget)}>{savedMemories.map((pin) => <div className="memory-entry" key={pin.id}><small>{memorySavedAt(pin)}</small><p>{pin.content}</p></div>)}</div>}
                 </section>
               </div>}
-              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
+              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button className="mobile-background-setting" aria-pressed={mobileCharacterBackground} onClick={() => setMobileCharacterBackground((enabled) => !enabled)}><RoleIcon /><span><b>Character chat background</b><small>Show character artwork behind messages</small></span><i className={mobileCharacterBackground ? "on" : ""}><em /></i></button><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
             </section>
           </div>
         )}
@@ -1396,7 +1395,6 @@ function ChatContent() {
 
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-            {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{guestQuotaLabel}<span>登录保存进度</span></button>}
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
