@@ -9,8 +9,9 @@
   min-height: 100dvh;
   color: #fff;
   background:
-    linear-gradient(180deg,#1b1528 2%,rgba(25,21,40,0) 38%),
-    radial-gradient(circle at 50% 108%,rgba(144,50,252,.13),transparent 34%),
+    radial-gradient(88% 52% at 46% 112%,rgba(61,18,91,.38) 0%,rgba(37,12,55,.2) 44%,transparent 78%),
+    radial-gradient(70% 62% at 42% 46%,rgba(41,12,25,.2) 0%,transparent 72%),
+    linear-gradient(180deg,#080608 0%,#0b070a 60%,#0e080f 100%),
     var(--page);
   font-size: 14px;
 }
