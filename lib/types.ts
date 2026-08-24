@@ -56,7 +56,8 @@ export type AuthContext = {
 };
 
 export type ModelProfile = {
-  profile: "fast" | "balanced" | "immersive";
+  profile: string;
+  tier_label: "Free" | "Standard" | "Premium" | string;
   display_name: string;
   description: string;
   coin_cost: number;
@@ -108,7 +109,7 @@ export type FeedCharacter = Character & {
 export type Conversation = {
   id: string;
   character_id: string;
-  model_profile: ModelProfile["profile"] | "guest_free";
+  model_profile: string;
   runtime_session_id: number;
   updated_at?: string;
   character: Character;
