@@ -13,16 +13,10 @@ import { errorMessage, messageForCode } from "@/lib/error-messages";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
-const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
-const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
-// Guests get an empty model list from the backend (they are locked to guest_free),
-// so this teaser lets them see and tap the premium models; picking one opens the
-// lightweight sign-in and, once authenticated, switches to the model they wanted.
-const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: string; coin_cost: number }[] = [
-  { profile: "fast", display_name: "Fast", coin_cost: 0 },
-  { profile: "balanced", display_name: "Balanced", coin_cost: 0 },
-  { profile: "immersive", display_name: "Immersive", coin_cost: 0 },
-];
+const modelName = (model?: ModelProfile | null) => model ? (model.display_name || model.profile) : undefined;
+const modelPrice = (model: ModelProfile) => model.coin_cost === 0
+  ? "Free"
+  : `${model.coin_cost} ${model.coin_cost === 1 ? "coin" : "coins"} / message`;
 
 /**
  * "Interrupted" is the honest answer whenever the backend did not name a reason: the client
@@ -666,7 +660,7 @@ function ChatContent() {
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
           {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{quotaLabel}<span>{GUEST_BANNER.savePrompt}</span></button>}
           <div className="mobile-tool-row">
-            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label={CHAT_LABELS.pinned}><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
@@ -731,8 +725,8 @@ function ChatContent() {
             <section className="mobile-tool-sheet" onClick={(event) => event.stopPropagation()}>
               <div className="mobile-sheet-handle" />
               <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
-              {mobileSheet === "model" && <div className="mobile-model-list">{(guest ? GUEST_MODEL_TEASER : models).map((model) => (
-                <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
+              {mobileSheet === "model" && <div className="mobile-model-list">{models.length === 0 ? <p className="model-list-empty">No models are available right now.</p> : models.map((model) => (
+                <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}<em className="model-tier">{model.tier_label}</em></b><small>{model.description}</small><small>{guest ? `Sign in to unlock · ${modelPrice(model)}` : modelPrice(model)}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
               {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
@@ -855,14 +849,14 @@ function ChatContent() {
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
-                {(guest ? GUEST_MODEL_TEASER : models).map((model) => (
+                {models.length === 0 ? <p className="model-list-empty">No models are available right now.</p> : models.map((model) => (
                   <button
                     key={model.profile}
                     className={!guest && model.profile === conversation.model_profile ? "selected" : ""}
                     disabled={sending || switchingModel}
                     onClick={() => chooseModel(model.profile)}
                   >
-                    <span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span>
+                    <span><b>{modelName(model)}<em className="model-tier">{model.tier_label}</em></b><small>{model.description}</small><small>{guest ? `Sign in to unlock · ${modelPrice(model)}` : modelPrice(model)}</small></span>
                     <i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i>
                   </button>
                 ))}
@@ -884,7 +878,7 @@ function ChatContent() {
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
               <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
