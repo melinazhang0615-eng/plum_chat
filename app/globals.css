@@ -306,7 +306,7 @@ svg { display: block; }
 .restart-modal > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .restart-modal button { padding: 10px; border: 0; border-radius: 8px; cursor: pointer; font-size: 11px; font-weight: 600; }
 .restart-modal .secondary { color: #eee; background: rgba(255,255,255,.08); }.restart-modal .danger { color: #201316; background: #eadcff; }
-.chat-loading, .fatal-state { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 14px; text-align: center; background: #180c0e; }
+.chat-loading, .fatal-state { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 14px; text-align: center; background: var(--plum-page-glow), var(--plum-canvas); }
 .loading-mark { height: 38px; display: flex; align-items: center; gap: 4px; }.loading-mark i { width: 5px; border-radius: 5px; background: #c397ff; animation: bars 1s infinite; }.loading-mark i:nth-child(1){height:17px}.loading-mark i:nth-child(2){height:32px;animation-delay:.12s}.loading-mark i:nth-child(3){height:23px;animation-delay:.24s}
 @keyframes bars { 50% { transform: scaleY(.55); opacity: .5; } }
 .chat-loading p, .fatal-state p { color: rgba(255,255,255,.5); font-size: 11px; }.fatal-state h1{margin:0}.fatal-state button{padding:10px 16px;border:0;border-radius:8px;color:#211418;background:#eadcff}
