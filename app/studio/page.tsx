@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
-import { CloseIcon, CopyIcon, CreateIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
+import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
@@ -186,7 +186,7 @@ export default function StudioPage() {
         <span className={`${styles.status} ${styles[work.moderation_status]}`}>{statusLabel(work)}</span>
         <div className={styles.more}>
           <button aria-label="More options" aria-expanded={menuWorkId === work.work_id} onClick={() => setMenuWorkId((current) => current === work.work_id ? null : work.work_id)}>•••</button>
-          {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}>Edit</button>{work.published_character_id && <button onClick={() => { setMenuWorkId(null); void shareWork(work); }}><ShareIcon />Share</button>}<button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}>Delete</button></div>}
+          {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}><EditIcon />Edit</button>{work.published_character_id && <button onClick={() => { setMenuWorkId(null); void shareWork(work); }}><ShareIcon />Share</button>}<button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}><DeleteIcon />Delete</button></div>}
         </div>
       </article>)}
     </section>}
