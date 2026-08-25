@@ -9,6 +9,7 @@ import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, SearchIcon, Shar
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
+import { shareCharacter } from "@/lib/character-share";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins } from "@/lib/format";
 import type { AuthUser } from "@/lib/types";
@@ -127,12 +128,15 @@ export default function StudioPage() {
   async function shareWork(work: CreationWork) {
     const characterId = work.published_character_id;
     if (!characterId) return;
-    const url = `${window.location.origin}/chat/${encodeURIComponent(characterId)}`;
     try {
-      if (navigator.share) await navigator.share({ title: work.content.display_name || "Plum character", text: work.content.intro || "A character on Plum", url });
-      else { await navigator.clipboard.writeText(url); setShareNotice("Link copied"); }
-    } catch (shareError) {
-      if (shareError instanceof DOMException && shareError.name === "AbortError") return;
+      const result = await shareCharacter({
+        characterId,
+        title: work.content.display_name || "Plum character",
+        text: work.content.intro || "A character on Plum",
+      });
+      if (result === "copied") setShareNotice("Link copied");
+      if (result === "dismissed") return;
+    } catch {
       setShareNotice("Could not share this character");
     }
     window.setTimeout(() => setShareNotice(""), 2200);

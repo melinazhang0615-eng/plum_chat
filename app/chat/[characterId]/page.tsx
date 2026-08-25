@@ -11,6 +11,7 @@ import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum
 import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { CHAT_LABELS, GUEST_BANNER, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, guestQuotaLabel, messageStatusLabel } from "@/lib/copy";
 import { errorMessage, messageForCode } from "@/lib/error-messages";
+import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
@@ -530,12 +531,16 @@ function ChatContent() {
   }
 
   async function shareCharacter() {
-    const shareData = { title: displayName, text: tagline, url: window.location.href };
+    const characterId = conversation?.character_id;
+    if (!characterId) return;
     try {
-      if (navigator.share) await navigator.share(shareData);
-      else await navigator.clipboard.writeText(window.location.href);
+      await shareCharacterLink({
+        characterId,
+        title: displayName,
+        text: tagline,
+      });
     } catch {
-      // Closing the native share sheet is not an error the UI needs to surface.
+      // Sharing is optional; keep the conversation usable if the browser refuses it.
     }
   }
 
