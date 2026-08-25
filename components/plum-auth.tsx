@@ -1,8 +1,9 @@
 "use client";
 
-import { createContext, FormEvent, ReactNode, useContext, useEffect, useState } from "react";
-import { createGuestSession, getAuthContext, requestEmailChallenge, updateGuestProfile, verifyEmailChallenge } from "@/lib/api";
+import { createContext, FormEvent, ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { createGuestSession, getAuthContext, requestEmailChallenge, submitClientTimezone, updateGuestProfile, verifyEmailChallenge } from "@/lib/api";
 import { errorMessage } from "@/lib/error-messages";
+import { detectClientTimezone, timezoneNeedsSubmit } from "@/lib/timezone";
 import type { AuthContext, AuthUser, GuestProfile } from "@/lib/types";
 
 type AuthState = AuthContext | null;
@@ -19,6 +20,7 @@ const PlumAuthContext = createContext<PlumAuthValue | null>(null);
 export function PlumAuthProvider({ children }: { children: ReactNode }) {
   const [context, setContext] = useState<AuthState>(null);
   const [loading, setLoading] = useState(true);
+  const timezoneSent = useRef(false);
 
   async function refresh() {
     const next = await getAuthContext();
@@ -29,6 +31,28 @@ export function PlumAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh().catch(() => setContext(null)).finally(() => setLoading(false));
   }, []);
+
+  /**
+   * Tell the server which timezone this browser is in. It is the only source of that fact
+   * (see lib/timezone.ts), and the daily memory job needs it to cut days on the reader's own
+   * midnight rather than UTC's.
+   *
+   * Runs off `context` rather than inside `refresh` so every path that installs an actor —
+   * initial load, guest creation, sign-in — is covered by one place. At most one attempt per
+   * page load: a failure here only costs a UTC fallback, and retrying it would be a request
+   * per render for a value nothing on screen depends on.
+   */
+  useEffect(() => {
+    if (!context || context.actor.kind === "visitor" || timezoneSent.current) return;
+    const detected = detectClientTimezone();
+    if (!timezoneNeedsSubmit(context.language, detected)) return;
+    timezoneSent.current = true;
+    void submitClientTimezone(detected)
+      .then((result) => setContext((prev) => (prev?.language
+        ? { ...prev, language: { ...prev.language, timezone: result.preference.timezone, timezone_source: result.preference.source } }
+        : prev)))
+      .catch(() => undefined);
+  }, [context]);
 
   async function ensureGuest() {
     const current = context ?? await refresh();

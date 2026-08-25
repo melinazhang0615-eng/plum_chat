@@ -1,4 +1,4 @@
-import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, PreferenceSource, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
 import { cookieValue } from "./cookies.ts";
 import { reportApiFailure, reportStreamFailure } from "./telemetry.ts";
@@ -362,6 +362,17 @@ export function getBootstrap() {
 
 export function getAuthContext() {
   return request<AuthContext>("/auth/context");
+}
+
+/**
+ * Hand the server the browser's IANA timezone. Fire-and-forget by design: it only feeds the
+ * daily-memory day boundary, so a failure costs a UTC fallback, never the session.
+ */
+export function submitClientTimezone(timezone: string) {
+  return request<{ status: string; preference: { timezone: string; source: PreferenceSource; updated: boolean } }>("/preferences/timezone", {
+    method: "PUT",
+    body: JSON.stringify({ timezone }),
+  });
 }
 
 export function createGuestSession() {
