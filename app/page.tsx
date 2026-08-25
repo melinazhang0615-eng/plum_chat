@@ -4,12 +4,13 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
+import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, FEED_TAGS_MAX, createConversation, getFeed, logout } from "@/lib/api";
 import type { FeedGender, FeedRating } from "@/lib/api";
 import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
-import { ACCOUNT_MENU, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
+import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins, formatCompactCount } from "@/lib/format";
 import type { AuthUser, FeedCharacter } from "@/lib/types";
@@ -230,9 +231,7 @@ function FeedContent() {
         {user && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>
           {walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}
         </div>}
-        {user ? <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label={HEADER_LABELS.account}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button onClick={() => router.push("/studio")}>{ACCOUNT_MENU.studio}</button><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}
-        </div> : <button className="header-circle" aria-label={HEADER_LABELS.signIn} onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
+        {user ? <AccountDropdown user={user} open={accountOpen} onToggle={() => setAccountOpen((value) => !value)} onSignOut={() => void signOut()} /> : <button className="header-circle" aria-label={HEADER_LABELS.signIn} onClick={() => setLoginOpen(true)}><LoginIcon /></button>}
       </div>
       {searchOpen && <div className="enhanced-search"><SearchIcon /><input autoFocus value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="Search characters, settings, or tags" /><button onClick={() => { setSearchText(""); setSearchOpen(false); }} aria-label="Close search"><CloseIcon /></button><div><small>Trending searches</small>{HOT_SEARCHES.map((term) => <button key={term} onClick={() => setSearchText(term)}>{term}</button>)}</div></div>}
     </header>
@@ -266,7 +265,7 @@ function FeedContent() {
       {nextCursor && <div className={styles.loadMore}><button onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more characters"}</button></div>}
       </>}
     </section>
-    <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><small>© 2026 PLUM. All rights reserved.</small></footer>
+    <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><CommunityLink className="footer-community-link" label="Contact & Support" /><small>© 2026 PLUM. All rights reserved.</small></footer>
     {loginOpen && <EmailSignInDialog returnTo={pendingTarget === "create" ? "/create" : undefined} onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
     {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target && target !== "create") void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
   </main>;

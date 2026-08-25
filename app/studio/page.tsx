@@ -1,19 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
+import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
-import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
+import { CloseIcon, CopyIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
-import { ACCOUNT_MENU, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
+import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins } from "@/lib/format";
 import type { AuthUser } from "@/lib/types";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
+const PROFILE_NAME_KEY = "plum_profile_display_name";
 
 function statusLabel(work: CreationWork) {
   if (work.moderation_status === "approved") return "Published";
@@ -37,12 +39,17 @@ export default function StudioPage() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [uidCopied, setUidCopied] = useState(false);
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   async function load() {
     setLoading(true); setError("");
     try {
       const bootstrap = await getBootstrap();
       setUser(bootstrap.user);
+      setProfileName(window.localStorage.getItem(PROFILE_NAME_KEY) || bootstrap.user.display_name);
       setBalance(bootstrap.wallet.balance);
       const result = await listCreationWorks();
       setItems(result.items);
@@ -107,6 +114,24 @@ export default function StudioPage() {
     router.replace("/");
   }
 
+  async function copyUid() {
+    if (!user?.id) return;
+    try {
+      await navigator.clipboard.writeText(user.id);
+      setUidCopied(true);
+      window.setTimeout(() => setUidCopied(false), 1800);
+    } catch { setUidCopied(false); }
+  }
+
+  function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    const value = profileName.trim();
+    if (!value) return;
+    window.localStorage.setItem(PROFILE_NAME_KEY, value);
+    setProfileName(value);
+    setProfileSaved(true);
+  }
+
   return <main className={styles.shell}>
     <header className="site-header">
       <div className="header-brand-group"><Brand ariaLabel="Back to Plum home"/><CommunityLink/></div>
@@ -121,12 +146,15 @@ export default function StudioPage() {
           <button className="coin-button" onClick={() => setWalletOpen((open) => !open)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>
           {walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}
         </div>}
-        {user && <div className="header-menu-wrap">
-          <button className="account-button" onClick={() => setAccountOpen((open) => !open)} aria-label={HEADER_LABELS.account} aria-expanded={accountOpen}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button aria-current="page" onClick={() => setAccountOpen(false)}>{ACCOUNT_MENU.studio}</button><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}
-        </div>}
+        {user && <AccountDropdown user={user} active="studio" open={accountOpen} onToggle={() => setAccountOpen((open) => !open)} onSignOut={() => void signOut()} />}
       </div>
     </header>
+    <section className="studio-profile-hero account-profile-hero">
+      <div className="studio-profile-avatar-column"><div className="account-avatar-large">{(profileName || user?.display_name || "P").slice(0, 1).toUpperCase()}</div></div>
+      <div className="studio-profile-main"><h1>{profileName || user?.display_name}</h1><p className="studio-uid-line">UID: {user?.id}<button className="studio-uid-copy" onClick={() => void copyUid()} aria-label="Copy UID" title={uidCopied ? "Copied" : "Copy UID"}><CopyIcon /></button><small>{uidCopied ? "Copied" : ""}</small></p><div className="studio-profile-stats"><span><strong>{items.length}</strong> Works</span><span><strong>{publishedItems.length}</strong> Published</span><span><strong>{formatCoins(balance)}</strong> Coins</span></div></div>
+      <div className="studio-profile-actions"><button className="account-primary-button" onClick={() => { setProfileEditing(true); setProfileSaved(false); }}>Edit Profile</button></div>
+    </section>
+    {profileEditing && <div className="studio-profile-modal-backdrop" onMouseDown={() => setProfileEditing(false)}><section className="studio-profile-modal" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onMouseDown={(event) => event.stopPropagation()}><button className="studio-profile-modal-close" onClick={() => setProfileEditing(false)} aria-label="Close edit profile"><CloseIcon /></button><form className="account-form" onSubmit={saveProfile}><div className="account-section-heading"><div><h2 id="edit-profile-title">Edit Profile</h2><p>Profile sync will connect to your account after the profile API is available.</p></div></div><div className="account-edit-avatar">{profileName.slice(0, 1).toUpperCase()}</div><label>Display name<input value={profileName} maxLength={40} onChange={(event) => { setProfileName(event.target.value); setProfileSaved(false); }} /></label><label>Account ID<input value={user?.id || ""} readOnly /></label><div className="account-form-actions"><button type="button" className="account-secondary-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="account-primary-button" type="submit" disabled={!profileName.trim()}>Save changes</button>{profileSaved && <span className="account-save-note">Saved on this device</span>}</div></form></section></div>}
     <section className={styles.heading}><div><span>CREATOR SPACE</span><h1>My Studio</h1><p>Manage drafts, review status, and published characters.</p></div></section>
     <nav className={styles.views} aria-label="Studio sections">
       <button className={view === "all" ? styles.active : ""} onClick={() => selectView("all")}><span>All works</span><b>{items.length}</b></button>

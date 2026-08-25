@@ -38,7 +38,8 @@ export const WALLET_PANEL = {
 
 export const ACCOUNT_MENU = {
   studio: "My Studio",
-  settings: "Account settings · coming soon",
+  wallet: "Wallet",
+  subscription: "Subscription",
   signOut: "Sign out",
 } as const;
 
