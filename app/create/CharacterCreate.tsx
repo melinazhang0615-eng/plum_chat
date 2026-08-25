@@ -3,6 +3,7 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
+import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
 import { CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, createCreationDraft, getCreationDraft, getCreatorTags, publishCreationDraft, updateCreationDraft, uploadCreatorPortrait } from "@/lib/api";
@@ -621,8 +622,7 @@ export function CharacterCreate({ user, balance, onSignOut }: { user: AuthUser; 
           {walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Recent activity</h3><p>No activity yet.</p><button disabled>Top up · Coming later</button></div>}
         </div>
         <div className="header-menu-wrap">
-          <button className="account-button" onClick={() => setAccountOpen((open) => !open)} aria-label="Account settings"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>
-          {accountOpen && <div className="header-dropdown account-menu"><button onClick={() => router.push("/studio")}>My Studio</button><button disabled>Account settings · Coming later</button><button onClick={() => { setAccountOpen(false); void onSignOut(); }}>Sign out</button></div>}
+          <AccountDropdown user={user} active="studio" open={accountOpen} onToggle={() => setAccountOpen((open) => !open)} onSignOut={() => { setAccountOpen(false); void onSignOut(); }} />
         </div>
       </div>
     </header>
