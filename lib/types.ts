@@ -10,9 +10,11 @@ export type AuthUser = {
 };
 
 export type GuestProfile = {
-  pronouns: "she_her" | "he_him" | "they_them" | "other";
-  relationship_preference: "male" | "female" | "all" | "no_preference" | null;
+  age_band: "35_plus" | "25_34" | "18_24" | "14_17" | "13_or_younger" | "not_collected" | "above_26" | "24_26" | "21_23" | "18_20" | "0_13";
+  pronouns?: "she_her" | "he_him" | "they_them" | "other" | null;
+  relationship_preference: "male" | "female" | "non_binary" | "all" | "no_preference" | null;
   genres: string[];
+  age_declaration?: { status: "pending" | "accepted" | "revoked"; version: string; accepted_at: string | null };
 };
 
 /**
@@ -44,7 +46,7 @@ export type PlumCapabilities = {
 export type AuthActor =
   | { kind: "visitor"; user: null; profile_complete: false }
   | { kind: "guest"; user: { id: string; display_name: null }; profile_complete: boolean; profile?: GuestProfile }
-  | { kind: "member"; user: AuthUser; profile_complete: true };
+  | { kind: "member"; user: AuthUser; profile_complete: boolean; profile?: GuestProfile | null };
 
 export type AuthContext = {
   status: "ok";

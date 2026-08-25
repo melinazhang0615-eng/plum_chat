@@ -1,6 +1,7 @@
 // Extension included on purpose: a runtime (non-type) import needs it for the test runner's
 // resolver, which is also why `./cookies.ts` and `./telemetry.ts` are spelled that way in api.ts.
 import { ApiError } from "./api.ts";
+import { AGE_NOT_ELIGIBLE_MESSAGE, MATURE_CONTENT_NOT_ALLOWED_MESSAGE } from "./audience-policy.ts";
 
 /**
  * One sentence per backend error code, for every screen.
@@ -46,6 +47,9 @@ const CODE_MESSAGES: Record<string, string> = {
   guest_chat_disabled: "Guest chat is not open yet.",
   guest_session_required: "Your session expired. Refresh the page and try again.",
   guest_sign_in_required: "You have used up the free messages. Sign in to keep going — your story is saved.",
+  age_not_eligible: AGE_NOT_ELIGIBLE_MESSAGE,
+  audience_profile_required: "Tell us your age before opening mature content.",
+  mature_content_not_allowed: MATURE_CONTENT_NOT_ALLOWED_MESSAGE,
 
   // Chat turns.
   insufficient_coins: "Not enough coins for this message.",
