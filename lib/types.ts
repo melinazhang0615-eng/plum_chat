@@ -9,6 +9,46 @@ export type AuthUser = {
   display_name: string;
 };
 
+export type GuestProfile = {
+  pronouns: "she_her" | "he_him" | "they_them" | "other";
+  relationship_preference: "male" | "female" | "all" | "no_preference" | null;
+  genres: string[];
+};
+
+/**
+ * What a guest has left, as the API actually sends it (`get_guest_quota` in
+ * `plum/infrastructure/guest_repository.py`): two remaining counts, no totals and no flag.
+ *
+ * `typed` is a message the guest wrote; `continue` is tapping the character's continuation
+ * button. They are separate budgets, so a guest can run out of one and still have the other.
+ */
+export type GuestQuota = {
+  typed_remaining: number;
+  continue_remaining: number;
+};
+
+export type PlumCapabilities = {
+  guest_chat: boolean;
+  email_auth: boolean;
+  google_auth: boolean;
+  apple_auth?: boolean;
+  chat_streaming: boolean;
+};
+
+export type AuthActor =
+  | { kind: "visitor"; user: null; profile_complete: false }
+  | { kind: "guest"; user: { id: string; display_name: null }; profile_complete: boolean; profile?: GuestProfile }
+  | { kind: "member"; user: AuthUser; profile_complete: true };
+
+export type AuthContext = {
+  status: "ok";
+  actor: AuthActor;
+  capabilities: PlumCapabilities;
+  guest_quota: GuestQuota | null;
+  wallet: Wallet | null;
+  session_expires_at: string | null;
+};
+
 export type ModelProfile = {
   profile: "fast" | "balanced" | "immersive";
   display_name: string;
@@ -62,10 +102,18 @@ export type FeedCharacter = Character & {
 export type Conversation = {
   id: string;
   character_id: string;
-  model_profile: ModelProfile["profile"];
+  model_profile: ModelProfile["profile"] | "guest_free";
   runtime_session_id: number;
+  updated_at?: string;
   character: Character;
 };
+
+export type MessageStatus =
+  | "sending"
+  | "streaming"
+  | "completed"
+  | "cancelled"
+  | "failed";
 
 export type ChatMessage = {
   id: number | string;
@@ -73,7 +121,10 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   created_at?: string;
+  status?: MessageStatus;
+  /** @deprecated Kept while older API payloads and cached UI state are migrated. */
   pending?: boolean;
+  /** @deprecated Kept while older API payloads and cached UI state are migrated. */
   failed?: boolean;
 };
 

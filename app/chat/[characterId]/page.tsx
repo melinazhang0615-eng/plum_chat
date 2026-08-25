@@ -3,30 +3,38 @@
 import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Brand, CoinBadge } from "@/components/brand";
-import { ApiError, createConversation, getConversation, restartConversation, sendTurn, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
-import { formatCompactCount } from "@/lib/format";
-import type { CharacterExperience, ChatMessage, Conversation, ModelProfile } from "@/lib/types";
+import { Brand } from "@/components/brand";
+import { CommunityLink } from "@/components/community-link";
+import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
+import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
+import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
+import { ACCOUNT_MENU, CHAT_LABELS, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, messageStatusLabel } from "@/lib/copy";
+import { errorMessage, messageForCode } from "@/lib/error-messages";
+import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
-function formatTime(value?: string) {
-  if (!value) return "刚刚";
-  const normalized = value.includes("T") ? value : value.replace(" ", "T") + "+08:00";
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? "刚刚" : date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
+const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
+const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
+// Guests get an empty model list from the backend (they are locked to guest_free),
+// so this teaser lets them see and tap the premium models; picking one opens the
+// lightweight sign-in and, once authenticated, switches to the model they wanted.
+const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: string; coin_cost: number }[] = [
+  { profile: "fast", display_name: "Fast", coin_cost: 0 },
+  { profile: "balanced", display_name: "Balanced", coin_cost: 0 },
+  { profile: "immersive", display_name: "Immersive", coin_cost: 0 },
+];
 
-function formatShortDate(value: string) {
-  return new Intl.DateTimeFormat("en", { month: "2-digit", day: "2-digit" }).format(new Date(value));
-}
+/**
+ * "Interrupted" is the honest answer whenever the backend did not name a reason: the client
+ * cannot tell "never arrived" from "arrived, reply lost", so it must not claim either.
+ */
+const SEND_FALLBACK = "The message or the reply was interrupted. Please try again.";
 
-function SearchIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
-}
-function GlobeIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.2 2.4 3.3 5.4 3.3 9S14.2 18.6 12 21M12 3C9.8 5.4 8.7 8.4 8.7 12s1.1 6.6 3.3 9" /></svg>;
-}
 function SendIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
+}
+function StopIcon() {
+  return <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="10" y="10" width="10" height="10" rx="1.5" /></svg>;
 }
 function MoreIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 10.83a.83.83 0 1 0 0-1.66.83.83 0 0 0 0 1.66ZM10 5a.83.83 0 1 0 0-1.67A.83.83 0 0 0 10 5Zm0 11.67A.83.83 0 1 0 10 15a.83.83 0 0 0 0 1.67Z" /></svg>;
@@ -67,14 +75,14 @@ function GalleryIcon() {
 function InspirationIcon() {
   return <svg viewBox="0 0 26 26" aria-hidden="true"><path d="M9.4 18.4h7.2M10.5 21.2h5M13 3.4a7 7 0 0 0-4.2 12.6c.85.65 1.3 1.31 1.42 2h5.56c.12-.69.57-1.35 1.42-2A7 7 0 0 0 13 3.4Z" /><path d="M13 0v2M3.9 4.1l1.45 1.45M0 13h2M22.1 4.1l-1.45 1.45M26 13h-2" /></svg>;
 }
+function CommentIcon() {
+  return <svg className="comment-ico" viewBox="0 0 16 16" aria-hidden="true"><path fillRule="evenodd" clipRule="evenodd" d="M8 1.7c3.5 0 6.3 2.3 6.3 5.2 0 2.88-2.8 5.2-6.3 5.2-.62 0-1.22-.07-1.78-.2l-3.02 1.5c-.28.14-.6-.12-.52-.42l.63-2.3C2.06 9.86 1.7 8.64 1.7 6.9 1.7 4 4.5 1.7 8 1.7ZM5.4 6a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Z" /></svg>;
+}
 function ScrollLatestIcon() {
   return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M22.4 21.6H9.6M16 9.6v9.1m0 0 4-4.2m-4 4.2-4-4.2" /></svg>;
 }
 function BackIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>;
-}
-function CloseIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
 }
 function RestartIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 5 15.5M4.8 9V4.5M4.8 9h4.5" /></svg>;
@@ -82,28 +90,80 @@ function RestartIcon() {
 function ShareIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.2" /><circle cx="6" cy="12" r="2.2" /><circle cx="18" cy="19" r="2.2" /><path d="m8 11 8-5M8 13l8 5" /></svg>;
 }
+function CollapseProfileIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
+}
+function CollectionsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5h10.5A2.5 2.5 0 0 1 20 8v10.5H9.5A2.5 2.5 0 0 1 7 16V5.5Z" /><path d="M7 8H5.5A2.5 2.5 0 0 0 3 10.5V19a2 2 0 0 0 2 2h10.5a2.5 2.5 0 0 0 2.5-2.5" /><path className="collection-spark" d="m13.2 7.1 1.05 2.55 2.55 1.05-2.55 1.05-1.05 2.55-1.05-2.55L9.6 10.7l2.55-1.05 1.05-2.55Z" /><path className="collection-spark" d="m17.4 5 .38.92.92.38-.92.38-.38.92-.38-.92-.92-.38.92-.38.38-.92Z" /></svg>; }
 
 function ChatLoading() {
-  return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>正在走进角色的世界…</p></main>;
+  return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>Stepping into the character&apos;s world…</p></main>;
 }
 
-export default function ChatPage() {
+function getMessageStatus(message: ChatMessage): MessageStatus {
+  if (message.status) return message.status;
+  if (message.failed) return "failed";
+  if (message.pending) return "sending";
+  return "completed";
+}
+
+function messageStatusText(message: ChatMessage) {
+  return messageStatusLabel(getMessageStatus(message), message) ?? formatMessageTime(message.created_at);
+}
+
+function ChatContent() {
   const params = useParams<{ characterId: string }>();
   const search = useSearchParams();
+  const requestedConversationId = search.get("conversation");
   const router = useRouter();
+  const { refresh, context } = usePlumAuth();
   const desktopMessageStageRef = useRef<HTMLElement>(null);
   const mobileMessageStageRef = useRef<HTMLElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const historyRailRef = useRef<HTMLElement>(null);
+  const roleProfileRef = useRef<HTMLElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const streamBufferRef = useRef("");
+  const activeTurnRef = useRef<{ requestId: string; assistantId: string; cancelled: boolean } | null>(null);
+  const reconciliationTimersRef = useRef<number[]>([]);
+  const nearBottomRef = useRef({ desktop: true, mobile: true });
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [experience, setExperience] = useState<CharacterExperience | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [balance, setBalance] = useState(0);
+  const [guestQuota, setGuestQuota] = useState<GuestQuota | null>(null);
+  const [guest, setGuest] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
+  // The model a guest tapped before signing in; applied automatically after auth.
+  const [pendingModel, setPendingModel] = useState<ModelProfile["profile"] | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [history, setHistory] = useState<Conversation[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
+  const [generationState, setGenerationState] = useState<"idle" | "submitting" | "streaming" | "cancelling">("idle");
+  const [restarting, setRestarting] = useState(false);
+  const [chatStreamingEnabled, setChatStreamingEnabled] = useState(false);
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  useEffect(() => {
+    if (loading) return;
+    if (typeof window !== "undefined" && window.localStorage.getItem("plum_welcome_seen")) return;
+    const actor = context?.actor;
+    const isNewUser = actor?.kind === "visitor" || (actor?.kind === "guest" && !actor.profile_complete);
+    if (!isNewUser) return;
+    // New users only, once ever: show Welcome ~2s after the opening line lands in the room.
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem("plum_welcome_seen", "1");
+      setShowWelcome(true);
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [loading, context]);
   const [error, setError] = useState<string | null>(null);
   const [showRestart, setShowRestart] = useState(false);
   const [showProfile, setShowProfile] = useState(true);
@@ -115,48 +175,80 @@ export default function ChatPage() {
   const [reactionBusy, setReactionBusy] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [mobileSheet, setMobileSheet] = useState<"model" | "role" | "pinned" | "more" | null>(null);
+  const [mobileCharacterBackground, setMobileCharacterBackground] = useState(false);
 
   const selectedModel = useMemo(
     () => models.find((item) => item.profile === conversation?.model_profile),
     [models, conversation?.model_profile],
   );
+  const generating = generationState !== "idle";
+  const canStopGeneration = generating && chatStreamingEnabled;
+  const sending = generating || restarting;
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      let conversationId = search.get("conversation");
+      let conversationId = requestedConversationId;
       if (!conversationId) {
         const created = await createConversation(params.characterId);
         conversationId = created.conversation.id;
         router.replace(`/chat/${params.characterId}?conversation=${conversationId}`);
       }
-      const detail = await getConversation(conversationId);
+      const [detail, auth, conversationHistory] = await Promise.all([
+        getConversation(conversationId),
+        getAuthContext(),
+        getConversationHistory(),
+      ]);
       setConversation(detail.conversation);
       setMessages(detail.messages);
       setModels(detail.models);
-      setBalance(detail.wallet.balance);
+      setBalance(detail.wallet?.balance ?? 0);
+      setGuest(auth.actor.kind === "guest");
+      setGuestQuota(detail.guest_quota ?? auth.guest_quota);
+      setUser(auth.actor.kind === "member" ? auth.actor.user : null);
+      setHistory(conversationHistory.items);
       setExperience(detail.experience);
+      setChatStreamingEnabled(auth.capabilities.chat_streaming === true);
       setLiked(null);
       setFavorited(null);
     } catch (loadError) {
       if (loadError instanceof ApiError && loadError.status === 401) {
-        router.replace("/?login=1");
+        router.replace("/");
         return;
       }
-      setError("聊天暂时加载失败，请返回后重试。");
+      setError(errorMessage(loadError, { fallback: "This chat could not be loaded. Go back and try again." }));
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void load(); }, [params.characterId]);
+  useEffect(() => { void load(); }, [params.characterId, requestedConversationId]);
   useEffect(() => {
-    [desktopMessageStageRef.current, mobileMessageStageRef.current].forEach((stage) => {
-      if (!stage) return;
-      stage.scrollTo({ top: stage.scrollHeight, behavior: "smooth" });
+    const stages = [
+      ["desktop", desktopMessageStageRef.current],
+      ["mobile", mobileMessageStageRef.current],
+    ] as const;
+    stages.forEach(([kind, stage]) => {
+      if (!stage || !stage.getClientRects().length || !nearBottomRef.current[kind]) return;
+      stage.scrollTo({ top: stage.scrollHeight, behavior: generationState === "streaming" ? "auto" : "smooth" });
     });
-    setShowScrollLatest(false);
-  }, [messages, sending]);
+  }, [messages, generationState]);
+  useEffect(() => {
+    function collapseHistoryIfItOverlapsProfile() {
+      if (!historyOpen || !historyRailRef.current || !roleProfileRef.current) return;
+      const rail = historyRailRef.current.getBoundingClientRect();
+      const profile = roleProfileRef.current.getBoundingClientRect();
+      if (rail.right + 8 > profile.left) setHistoryOpen(false);
+    }
+    window.addEventListener("resize", collapseHistoryIfItOverlapsProfile);
+    return () => window.removeEventListener("resize", collapseHistoryIfItOverlapsProfile);
+  }, [historyOpen]);
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
+    reconciliationTimersRef.current.forEach((timer) => clearTimeout(timer));
+  }, []);
 
   function redirectIfUnauthorized(requestError: unknown) {
     if (requestError instanceof ApiError && requestError.status === 401) {
@@ -172,6 +264,72 @@ export default function ChatPage() {
     visibleTextarea?.focus();
   }
 
+  function flushAssistantBuffer(assistantId: string) {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    const delta = streamBufferRef.current;
+    streamBufferRef.current = "";
+    if (!delta) return;
+    setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content + delta } : item));
+  }
+
+  function appendAssistantDelta(assistantId: string, delta: string) {
+    if (!delta || activeTurnRef.current?.cancelled) return;
+    streamBufferRef.current += delta;
+    if (animationFrameRef.current !== null) return;
+    animationFrameRef.current = requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      const buffered = streamBufferRef.current;
+      streamBufferRef.current = "";
+      if (!buffered || activeTurnRef.current?.cancelled) return;
+      setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content + buffered, status: "streaming" } : item));
+    });
+  }
+
+  function stopGeneration() {
+    const activeTurn = activeTurnRef.current;
+    if (!activeTurn || generationState === "cancelling") return;
+    activeTurn.cancelled = true;
+    flushAssistantBuffer(activeTurn.assistantId);
+    setGenerationState("cancelling");
+    setMessages((current) => current.map((item) => {
+      if (item.id === activeTurn.assistantId) return { ...item, status: "cancelled" };
+      if (item.id === activeTurn.requestId && getMessageStatus(item) === "sending") return { ...item, status: "completed" };
+      return item;
+    }));
+    const controller = abortRef.current;
+    const conversationId = conversation?.id;
+    let finalized = false;
+    const finalizeStop = () => {
+      if (finalized) return;
+      finalized = true;
+      controller?.abort();
+      if (!conversationId) return;
+      [700, 1800].forEach((delay) => {
+        const timer = window.setTimeout(() => {
+          void getConversation(conversationId)
+            .then((detail) => { setBalance(detail.wallet?.balance ?? 0); setGuestQuota(detail.guest_quota ?? null); })
+            .catch(() => undefined);
+        }, delay);
+        reconciliationTimersRef.current.push(timer);
+      });
+    };
+    const fallbackTimer = window.setTimeout(finalizeStop, 500);
+    if (!conversationId) {
+      finalizeStop();
+      return;
+    }
+    void cancelTurn(conversationId, activeTurn.requestId)
+      .then((result) => setBalance(result.wallet.balance))
+      .catch(() => undefined)
+      .finally(() => {
+        clearTimeout(fallbackTimer);
+        finalizeStop();
+      });
+  }
+
   async function selectModel(profile: ModelProfile["profile"]) {
     if (!conversation || sending || switchingModel || profile === conversation.model_profile) return;
     const previous = conversation;
@@ -183,46 +341,140 @@ export default function ChatPage() {
     } catch (modelError) {
       setConversation(previous);
       if (redirectIfUnauthorized(modelError)) return;
-      setError("模型切换失败，请重试。");
+      setError(errorMessage(modelError, { fallback: "Could not switch the model. Please try again." }));
     } finally {
       setSwitchingModel(false);
     }
   }
 
+  // Guests may open the model list and tap any model; the reveal that it needs an
+  // account is deferred to this point — we remember the choice and open sign-in,
+  // then apply it in the sign-in success handler so the login pays off immediately.
+  function chooseModel(profile: ModelProfile["profile"]) {
+    setComposerPanel(null);
+    setMobileSheet(null);
+    if (guest) {
+      setPendingModel(profile);
+      setSignInOpen(true);
+      return;
+    }
+    void selectModel(profile);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const content = text.trim();
-    if (!conversation || !content || sending || switchingModel || !selectedModel) return;
-    if (balance < selectedModel.coin_cost) {
-      setError("金币余额不足，暂时无法发送这条消息。");
+    if (!conversation || !content || sending || switchingModel || (!guest && !selectedModel)) return;
+    if (!guest && selectedModel && balance < selectedModel.coin_cost) {
+      setError("Not enough coins to send this message.");
       return;
     }
     const requestId = crypto.randomUUID();
+    const assistantId = `local-assistant:${requestId}`;
+    const controller = new AbortController();
+    let accepted = false;
     setText("");
-    setMessages((current) => [...current, { id: requestId, message_id: requestId, role: "user", content, pending: true }]);
-    setSending(true);
+    setMessages((current) => [
+      ...current,
+      { id: requestId, message_id: requestId, role: "user", content, status: "sending" },
+      { id: assistantId, role: "assistant", content: "", status: "sending" },
+    ]);
+    streamBufferRef.current = "";
+    abortRef.current = controller;
+    activeTurnRef.current = { requestId, assistantId, cancelled: false };
+    setGenerationState("submitting");
     setError(null);
     try {
-      const result = await sendTurn(conversation.id, content, requestId);
-      setMessages((current) => [
-        ...current.map((item) => item.id === requestId ? { ...item, pending: false } : item),
-        { id: result.reply.message_id ?? `reply-${requestId}`, message_id: result.reply.message_id, role: "assistant", content: result.reply.text },
-      ]);
-      setBalance(result.wallet.balance);
+      if (chatStreamingEnabled) {
+        await sendTurnStream({
+          conversationId: conversation.id,
+          text: content,
+          requestId,
+          guest,
+          signal: controller.signal,
+          onEvent: (streamEvent) => {
+            if (activeTurnRef.current?.requestId !== requestId || activeTurnRef.current.cancelled) return;
+            if (streamEvent.type === "turn.accepted") {
+              accepted = true;
+              setGenerationState("streaming");
+              setMessages((current) => current.map((item) => item.id === requestId
+                ? { ...item, status: "completed" }
+                : item.id === assistantId ? { ...item, status: "streaming" } : item));
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
+            } else if (streamEvent.type === "message.delta") {
+              setGenerationState("streaming");
+              appendAssistantDelta(assistantId, streamEvent.text);
+            } else if (streamEvent.type === "turn.completed") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
+              setMessages((current) => current.map((item) => item.id === assistantId ? {
+                ...item,
+                id: streamEvent.message_id ?? item.id,
+                message_id: streamEvent.message_id,
+                status: "completed",
+              } : item));
+            } else if (streamEvent.type === "turn.cancelled") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
+              setMessages((current) => current.map((item) => item.id === assistantId ? {
+                ...item,
+                id: streamEvent.message_id ?? item.id,
+                message_id: streamEvent.message_id,
+                status: "cancelled",
+              } : item));
+            } else if (streamEvent.type === "turn.failed") {
+              flushAssistantBuffer(assistantId);
+              setBalance(streamEvent.wallet?.balance ?? 0);
+              if (streamEvent.guest_quota) setGuestQuota(streamEvent.guest_quota);
+              setMessages((current) => current.map((item) => item.id === assistantId
+                ? { ...item, status: "failed" }
+                : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
+              setText((current) => current || content);
+              setError(messageForCode(streamEvent.code, "The reply could not be generated. Please try again."));
+            }
+          },
+        });
+      } else {
+        const result = await sendTurn(conversation.id, content, requestId, guest);
+        setMessages((current) => current.map((item) => item.id === requestId
+          ? { ...item, status: "completed" }
+          : item.id === assistantId ? {
+            ...item,
+            id: result.reply.message_id ?? item.id,
+            message_id: result.reply.message_id,
+            content: result.reply.text,
+            status: "completed",
+          } : item));
+        setBalance(result.wallet?.balance ?? 0);
+        if (result.guest_quota) setGuestQuota(result.guest_quota);
+      }
     } catch (sendError) {
-      setMessages((current) => current.map((item) => item.id === requestId ? { ...item, pending: false, failed: true } : item));
+      if (controller.signal.aborted) return;
+      flushAssistantBuffer(assistantId);
+      setMessages((current) => current.map((item) => item.id === assistantId
+        ? { ...item, status: "failed" }
+        : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
+      if (sendError instanceof ApiError && sendError.message === "guest_sign_in_required") {
+        setSignInOpen(true);
+        setError(errorMessage(sendError, { fallback: SEND_FALLBACK }));
+        return;
+      }
       if (redirectIfUnauthorized(sendError)) return;
-      setError(sendError instanceof Error && sendError.message === "insufficient_coins" ? "金币余额不足。" : "消息没能发出去，请再试一次。");
-      setText(content);
+      setError(errorMessage(sendError, { offline: SEND_FALLBACK, fallback: SEND_FALLBACK }));
+      setText((current) => current || content);
     } finally {
-      setSending(false);
+      if (activeTurnRef.current?.requestId === requestId) activeTurnRef.current = null;
+      if (abortRef.current === controller) abortRef.current = null;
+      setGenerationState("idle");
       focusVisibleComposer();
     }
   }
 
   async function confirmRestart() {
-    if (!conversation || sending || switchingModel) return;
-    setSending(true);
+    if (!conversation || guest || sending || switchingModel) return;
+    setRestarting(true);
     try {
       const result = await restartConversation(conversation.id);
       setConversation(result.conversation);
@@ -233,15 +485,20 @@ export default function ChatPage() {
       router.replace(`/chat/${params.characterId}?conversation=${result.conversation.id}`);
     } catch (restartError) {
       if (redirectIfUnauthorized(restartError)) return;
-      setError("重新开始失败，请稍后再试。");
+      setError(errorMessage(restartError, { fallback: "Could not restart the story. Please try again later." }));
     } finally {
-      setSending(false);
+      setRestarting(false);
     }
+  }
+
+  async function signOut() {
+    try { await logout(); } catch { /* an expired session is already signed out */ }
+    router.replace("/");
   }
 
   if (loading) return <ChatLoading />;
   if (!conversation || !experience) {
-    return <main className="fatal-state"><h1>没有找到这段对话</h1><p>{error}</p><button onClick={() => router.push("/")}>返回角色列表</button></main>;
+    return <main className="fatal-state"><h1>Conversation not found</h1><p>{error}</p><button onClick={() => router.push("/")}>Back to characters</button></main>;
   }
 
   const character = conversation.character;
@@ -257,6 +514,7 @@ export default function ChatPage() {
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
 
   function scrollToLatest() {
+    nearBottomRef.current = { desktop: true, mobile: true };
     [desktopMessageStageRef.current, mobileMessageStageRef.current].forEach((stage) => {
       if (stage?.getClientRects().length) stage.scrollTo({ top: stage.scrollHeight, behavior: "smooth" });
     });
@@ -280,6 +538,7 @@ export default function ChatPage() {
   }
 
   async function toggleLike() {
+    if (guest) { setSignInOpen(true); return; }
     if (reactionBusy) return;
     const next = !viewerHasLiked;
     setLiked(next);
@@ -298,13 +557,14 @@ export default function ChatPage() {
     } catch (likeError) {
       setLiked(null);
       if (redirectIfUnauthorized(likeError)) return;
-      setError("点赞状态保存失败，请重试。");
+      setError(errorMessage(likeError, { fallback: "Could not save your like. Please try again." }));
     } finally {
       setReactionBusy(false);
     }
   }
 
   async function toggleFavorite() {
+    if (guest) { setSignInOpen(true); return; }
     if (reactionBusy) return;
     const next = !viewerHasFavorited;
     setFavorited(next);
@@ -323,7 +583,7 @@ export default function ChatPage() {
     } catch (favoriteError) {
       setFavorited(null);
       if (redirectIfUnauthorized(favoriteError)) return;
-      setError("收藏状态保存失败，请重试。");
+      setError(errorMessage(favoriteError, { fallback: "Could not save this favorite. Please try again." }));
     } finally {
       setReactionBusy(false);
     }
@@ -334,17 +594,18 @@ export default function ChatPage() {
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
       <div className="chat-world-overlay" />
 
-      <section className="mobile-chat-shell" aria-label={`${displayName} 移动端对话`}>
-        <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />
+      <section className={`mobile-chat-shell${mobileCharacterBackground ? " has-character-background" : ""}`} aria-label={CHAT_LABELS.room(displayName)}>
+        {mobileCharacterBackground && <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />}
         <div className="mobile-chat-shade" />
 
         <header className="mobile-chat-header">
-          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label="返回角色列表"><BackIcon /></button>
-          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label="查看角色资料">
+          <button className="mobile-round-button" onClick={() => router.push("/")} aria-label={CHAT_LABELS.back}><BackIcon /></button>
+          <button className="mobile-character-button" onClick={() => setShowMobileProfile(true)} aria-label={CHAT_LABELS.showProfile}>
             <span><Image src={cover} alt="" fill sizes="34px" /></span>
             <b>{displayName}</b>
             {primaryBadge && <i title={primaryBadge.display_name}>✦</i>}
           </button>
+          <button className="mobile-round-button mobile-header-more" onClick={() => setMobileSheet("more")} aria-label={CHAT_LABELS.more}><MoreIcon /></button>
         </header>
 
         <section
@@ -352,7 +613,9 @@ export default function ChatPage() {
           ref={mobileMessageStageRef}
           onScroll={(event) => {
             const stage = event.currentTarget;
-            setShowScrollLatest(stage.scrollHeight - stage.scrollTop - stage.clientHeight > 72);
+            const nearBottom = stage.scrollHeight - stage.scrollTop - stage.clientHeight <= 72;
+            nearBottomRef.current.mobile = nearBottom;
+            setShowScrollLatest(!nearBottom);
           }}
         >
           <div className="mobile-message-list">
@@ -361,43 +624,32 @@ export default function ChatPage() {
             <div className="mobile-tagline"><b>Tagline:</b> “{tagline}”</div>
             <div className="mobile-opening">{character.greeting}</div>
 
-            {messages.map((message) => (
-              <div className={`mobile-message-row ${message.role}${message.failed ? " failed" : ""}`} key={`mobile-${message.id}`}>
+            {messages.map((message) => {
+              const status = getMessageStatus(message);
+              const waiting = !message.content && (status === "sending" || status === "streaming");
+              return (
+              <div className={`mobile-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={`mobile-${message.id}`}>
                 {message.role === "assistant" && <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>}
                 <div className="mobile-message-stack">
-                  <div className="mobile-bubble">{message.content}</div>
-                  <small>{message.failed ? "发送失败" : message.pending ? "发送中…" : formatTime(message.created_at)}</small>
+                  {waiting
+                    ? <div className="typing"><i /><i /><i /></div>
+                    : <div className="mobile-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
+                  <small>{messageStatusText(message)}</small>
                 </div>
               </div>
-            ))}
-
-            {sending && (
-              <div className="mobile-message-row assistant">
-                <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>
-                <div className="typing"><i /><i /><i /></div>
-              </div>
-            )}
+            );})}
           </div>
-          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+          {showScrollLatest && <button className="mobile-scroll-latest" onClick={scrollToLatest} aria-label={CHAT_LABELS.scrollLatest}><ScrollLatestIcon /></button>}
         </section>
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-          <div className="mobile-story-actions">
-            <button onClick={() => setShowRestart(true)}><RestartIcon /><span>Restart</span></button>
-            <button onClick={useInspiration}><InspirationIcon /><span>Inspire</span></button>
-            <button onClick={() => void shareCharacter()}><ShareIcon /><span>Share</span></button>
-            <button disabled><SceneImageIcon /><span>Image</span></button>
-            <button disabled><SceneVideoIcon /><span>Video</span></button>
-          </div>
           <div className="mobile-tool-row">
-            <button className="mobile-role-chip" onClick={() => setMobileSheet("role")}><RoleIcon />Role Card</button>
-            <span />
-            <button onClick={() => setMobileSheet("model")} aria-label="切换模型"><ModelIcon /></button>
-            <button onClick={() => setMobileSheet("pinned")} aria-label="查看置顶记忆"><NoteIcon /></button>
-            <button onClick={() => setMobileSheet("more")} aria-label="更多设置"><MoreIcon /></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label={CHAT_LABELS.pinned}><CommentIcon /><span className="mobile-card-pill-label">Pinned</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
+            <button type="button" className="mobile-inspire-btn" aria-label={CHAT_LABELS.inspiration} onClick={useInspiration}><InspirationIcon /></button>
             <textarea
               ref={mobileTextareaRef}
               value={text}
@@ -410,21 +662,26 @@ export default function ChatPage() {
               }}
               placeholder="Type a message..."
               rows={1}
-              disabled={sending || switchingModel}
+              disabled={restarting || switchingModel}
             />
-            <span>{selectedModel?.coin_cost ?? 0} ✦</span>
-            <button type="submit" disabled={!text.trim() || sending || switchingModel} aria-label="发送消息"><SendIcon /></button>
+            <button
+              type={canStopGeneration ? "button" : "submit"}
+              className={`mobile-send${canStopGeneration ? " is-stopping" : ""}`}
+              disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
+              onClick={canStopGeneration ? stopGeneration : undefined}
+              aria-label={canStopGeneration ? CHAT_LABELS.stop : CHAT_LABELS.send}
+            >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
           </form>
         </section>
 
         {showMobileProfile && (
           <div className="mobile-sheet-backdrop" onClick={() => setShowMobileProfile(false)}>
-            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={`${displayName} 角色资料`}>
+            <aside className="mobile-profile-sheet" onClick={(event) => event.stopPropagation()} aria-label={CHAT_LABELS.profile(displayName)}>
               <div className="mobile-sheet-handle" />
               <header className="mobile-profile-actions">
                 <button className="mobile-cid">CID: {character.id.replace("char_", "").slice(0, 5)}… <span>▣</span></button>
-                <button onClick={() => void shareCharacter()} aria-label="分享角色"><ShareIcon /></button>
-                <button onClick={() => setShowMobileProfile(false)} aria-label="关闭角色资料"><CloseIcon /></button>
+                <button onClick={() => void shareCharacter()} aria-label={CHAT_LABELS.share}><ShareIcon /></button>
+                <button onClick={() => setShowMobileProfile(false)} aria-label={CHAT_LABELS.closeProfile}><CloseIcon /></button>
               </header>
               <div className="mobile-profile-scroll">
                 <section className="mobile-profile-hero">
@@ -441,14 +698,6 @@ export default function ChatPage() {
                   <div><small>Interactions</small><strong>{formatCompactCount(profile.stats.interaction_count)}</strong></div>
                   <div><small>Connectors</small><strong>{formatCompactCount(profile.stats.connector_count)}</strong></div>
                 </section>
-                <section className="mobile-profile-section">
-                  <header><b>✦ Hot Comments 🔥</b><span>{profile.stats.comment_count.toLocaleString()}</span></header>
-                  {profile.hot_comments.map((comment) => <article key={comment.id}><i>{comment.author.display_name.slice(0, 1).toUpperCase()}</i><div><b>{comment.author.display_name}</b><p>{comment.content}</p></div><span>♡ {comment.like_count}</span></article>)}
-                </section>
-                <section className="mobile-profile-section mobile-memory-section">
-                  <header><b>✦ Memory</b><span>{profile.stats.memory_count}</span></header>
-                  {profile.memories.map((memory) => <article key={memory.id}><i>∞</i><div><b>{memory.title}</b><p>{memory.engagement_count} moments</p></div></article>)}
-                </section>
                 <section className="mobile-profile-copy"><small>Tagline</small><p>“{tagline}”</p></section>
                 <section className="mobile-profile-copy"><small>Greeting</small><p>{character.greeting}</p></section>
               </div>
@@ -461,40 +710,49 @@ export default function ChatPage() {
             <section className="mobile-tool-sheet" onClick={(event) => event.stopPropagation()}>
               <div className="mobile-sheet-handle" />
               <header><b>{mobileSheet === "model" ? "Story model" : mobileSheet === "role" ? "Role Card" : mobileSheet === "pinned" ? "Pinned" : "Chat settings"}</b><button onClick={() => setMobileSheet(null)}><CloseIcon /></button></header>
-              {mobileSheet === "model" && <div className="mobile-model-list">{models.map((model) => (
-                <button key={model.profile} className={model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => { void selectModel(model.profile); setMobileSheet(null); }}><span><b>{model.display_name}</b><small>{model.coin_cost} coins / message</small></span><i>{model.profile === conversation.model_profile ? "✓" : ""}</i></button>
+              {mobileSheet === "model" && <div className="mobile-model-list">{(guest ? GUEST_MODEL_TEASER : models).map((model) => (
+                <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
               {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
               {mobileSheet === "pinned" && <div className="mobile-sheet-list">{conversationTools.pins.length === 0 ? <p><NoteIcon />No pinned memories</p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}</div>}
-              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
+              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button className="mobile-background-setting" aria-pressed={mobileCharacterBackground} onClick={() => setMobileCharacterBackground((enabled) => !enabled)}><RoleIcon /><span><b>Character chat background</b><small>Show character artwork behind messages</small></span><i className={mobileCharacterBackground ? "on" : ""}><em /></i></button><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button></div>}
             </section>
           </div>
         )}
       </section>
 
-      <header className="tipsy-header chat-site-header">
-        <div className="tipsy-header-left">
-          <Brand />
-          <button className="community-pill"><span>☁</span><i />···</button>
-          <button className="download-pill"><span>▣</span> Download</button>
-        </div>
-        <div className="tipsy-header-right">
-          <button className="header-circle" aria-label="搜索"><SearchIcon /></button>
-          <button className="create-pill">Create</button>
-          <button className="header-circle" aria-label="切换语言"><GlobeIcon /></button>
-          <CoinBadge balance={balance} compact />
-          <button className="login-pill">Login</button>
+      <header className="site-header chat-site-header">
+        <div className="header-brand-group"><Brand /><CommunityLink /></div>
+        <div className="site-header-actions">
+          <button className="header-circle" aria-label={HEADER_LABELS.search} onClick={() => router.push("/?search=1")}><SearchIcon /></button>
+          <button className="header-circle" aria-label={HEADER_LABELS.create} title={HEADER_LABELS.create} onClick={() => router.push("/create")}><CreateIcon /></button>
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}</div>
+          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}</div>}
+          {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>{HEADER_LABELS.signIn}</button>}
+          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label={HEADER_LABELS.account}><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>{ACCOUNT_MENU.settings}</button><button onClick={() => void signOut()}>{ACCOUNT_MENU.signOut}</button></div>}</div>}
         </div>
       </header>
 
+      {user && history.length > 0 && <aside ref={historyRailRef} className={`chat-history-rail${historyOpen ? " open" : ""}`} aria-label="Collections">
+        <button className="history-toggle" onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen} aria-label={historyOpen ? "Collapse Collections" : "Open Collections"} title="Collections"><CollectionsIcon /></button>
+        <div className="history-list">{history.map((item) => {
+          const active = item.id === conversation.id;
+          const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
+          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={CHAT_LABELS.openConversation(item.character.display_name)}>
+            <span className="history-avatar"><Image src={avatar} alt="" fill sizes="42px" /></span>
+            <span className="history-copy"><strong>{item.character.display_name}</strong><small>{item.character.tagline}</small></span>
+          </button>;
+        })}</div>
+      </aside>}
+
       <div className={`reference-chat-workspace${showProfile ? "" : " profile-collapsed"}`}>
         {showProfile && (
-          <aside className="role-profile" aria-label={`${displayName} 角色资料`}>
+          <aside ref={roleProfileRef} className="role-profile" aria-label={CHAT_LABELS.profile(displayName)}>
             <Image className="role-profile-cover" src={cover} alt={`${displayName} profile`} fill priority sizes="350px" />
             <div className="profile-image-shade" />
             <div className="profile-top-actions">
-              <button className="cid-pill">CID: {character.id.replace("char_", "").slice(0, 5)}… <span>▣</span></button>
-              <button className="hide-profile" onClick={() => setShowProfile(false)}>Hide Profile <span>›</span></button>
+              <button className="profile-icon-action" aria-label={CHAT_LABELS.share} title={CHAT_LABELS.share} onClick={() => void shareCharacter()}><ShareIcon /></button>
+              <button className="profile-icon-action" aria-label={CHAT_LABELS.closeProfile} title={CHAT_LABELS.closeProfile} onClick={() => setShowProfile(false)}><CollapseProfileIcon /></button>
             </div>
 
             <div className="profile-hover-content">
@@ -512,28 +770,6 @@ export default function ChatPage() {
                 <div><small>Connectors</small><strong>{formatCompactCount(profile.stats.connector_count)}</strong></div>
               </section>
 
-              <section className="profile-glass-card comments-card">
-                <header><b>✦ Hot Comments 🔥</b><button>View All ({profile.stats.comment_count.toLocaleString()}) <span>›</span></button></header>
-                {profile.hot_comments.map((comment, index) => (
-                  <article className="profile-comment" key={comment.id}>
-                    <span className={`comment-avatar ${index % 2 === 0 ? "coral" : "violet"}`}>{comment.author.display_name.slice(0, 1).toUpperCase()}</span>
-                    <div><p><b>{comment.author.display_name}</b><time>{formatShortDate(comment.created_at)}</time></p><strong>{comment.content}</strong><button>View Translation</button></div>
-                    <span className="comment-like">♡<small>{comment.like_count}</small></span>
-                  </article>
-                ))}
-              </section>
-
-              <section className="profile-glass-card memories-card">
-                <header><b>✦ Memory</b><button>View All ({profile.stats.memory_count}) <span>›</span></button></header>
-                {profile.memories.map((memory, index) => (
-                  <article className="memory-row" key={memory.id}>
-                    <span className="memory-avatars"><i>{index + 1}</i><i><Image src={cover} alt="" fill sizes="26px" /></i><b>∞</b></span>
-                    <strong>{memory.title}</strong>
-                    <span className="memory-count">▢<small>{memory.engagement_count}</small></span>
-                  </article>
-                ))}
-              </section>
-
               <p className="profile-bottom-tagline">“{tagline}”</p>
             </div>
           </aside>
@@ -542,20 +778,16 @@ export default function ChatPage() {
         <section className="reference-conversation">
           <header className="reference-conversation-toolbar">
             <div className="conversation-character-status">
-              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label="显示角色资料"><Image src={cover} alt={displayName} fill sizes="48px" /></button>
-              <div className="relationship-level has-tooltip" data-tooltip="Relationship level" aria-label={`关系等级 ${viewerState.relationship_level}`}><LevelIcon /><strong>Lv{viewerState.relationship_level}</strong></div>
+              <button className="conversation-avatar" onClick={() => setShowProfile(true)} aria-label={CHAT_LABELS.showProfile}><Image src={cover} alt={displayName} fill sizes="48px" /></button>
+              <span className="conversation-character-name" style={{ color: "#FFFFFF", fontWeight: "bold", fontSize: "20px" }}>{displayName}</span>
             </div>
             <div className="conversation-toolbar-actions">
-              <button className="conversation-stat-pill has-tooltip" data-tooltip="Story chapter" aria-label={`当前故事章节 ${viewerState.current_chapter}`}><BookIcon /><strong>{viewerState.current_chapter}</strong></button>
-              <button className="conversation-stat-pill audio-mode has-tooltip" data-tooltip="Auto voice · coming soon" aria-label="自动朗读，暂未开放" disabled><MutedAutoIcon /><strong>Auto</strong></button>
-              <button className={`conversation-stat-pill has-tooltip${viewerHasLiked ? " active" : ""}`} data-tooltip={viewerHasLiked ? "Unlike character" : "Like character"} aria-label={viewerHasLiked ? "取消点赞" : "点赞角色"} aria-pressed={viewerHasLiked} disabled={reactionBusy} onClick={() => void toggleLike()}><ThumbIcon /><strong>{visibleLikeCount}</strong></button>
-              <button className={`conversation-stat-pill favorite-stat has-tooltip${viewerHasFavorited ? " active" : ""}`} data-tooltip={viewerHasFavorited ? "Remove favorite" : "Favorite character"} aria-label={viewerHasFavorited ? "取消收藏角色" : "收藏角色"} aria-pressed={viewerHasFavorited} disabled={reactionBusy} onClick={() => void toggleFavorite()}><HeartIcon /><strong>{visibleFavoriteCount}</strong></button>
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label="对话布局与设置"><MoreIcon /></button>
+              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => setShowChatMenu((value) => !value)} aria-label={CHAT_LABELS.settings}><MoreIcon /></button>
             </div>
             {showChatMenu && (
               <div className="chat-settings-popover">
-                <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>恢复默认布局</b><small>显示角色资料与标准聊天宽度</small></div></button>
-                <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>重新开始对话</b><small>归档当前记录并开启新会话</small></div></button>
+                <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>Reset layout</b><small>Show profile and standard chat width</small></div></button>
+                <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>Restart conversation</b><small>Archive this chat and start fresh</small></div></button>
               </div>
             )}
           </header>
@@ -565,7 +797,9 @@ export default function ChatPage() {
             ref={desktopMessageStageRef}
             onScroll={(event) => {
               const stage = event.currentTarget;
-              setShowScrollLatest(stage.scrollHeight - stage.scrollTop - stage.clientHeight > 72);
+              const nearBottom = stage.scrollHeight - stage.scrollTop - stage.clientHeight <= 72;
+              nearBottomRef.current.desktop = nearBottom;
+              setShowScrollLatest(!nearBottom);
             }}
           >
             <div className="reference-message-list">
@@ -575,40 +809,38 @@ export default function ChatPage() {
 
               <div className="reference-opening">{character.greeting}</div>
 
-              {messages.map((message) => (
-                <div className={`reference-message-row ${message.role}${message.failed ? " failed" : ""}`} key={message.id}>
+              {messages.map((message) => {
+                const status = getMessageStatus(message);
+                const waiting = !message.content && (status === "sending" || status === "streaming");
+                return (
+                <div className={`reference-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={message.id}>
                   {message.role === "assistant" && <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>}
                   <div className="reference-message-stack">
-                    <div className="reference-bubble">{message.content}</div>
-                    <small>{message.failed ? "发送失败" : message.pending ? "发送中…" : formatTime(message.created_at)}</small>
+                    {waiting
+                      ? <div className="typing"><i /><i /><i /></div>
+                      : <div className="reference-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
+                    <small>{messageStatusText(message)}</small>
                   </div>
                 </div>
-              ))}
-
-              {sending && (
-                <div className="reference-message-row assistant">
-                  <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>
-                  <div className="typing"><i /><i /><i /></div>
-                </div>
-              )}
+              );})}
             </div>
-            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label="回到最新消息"><ScrollLatestIcon /></button>}
+            {showScrollLatest && <button className="scroll-latest has-tooltip" data-tooltip="Back to latest" onClick={scrollToLatest} aria-label={CHAT_LABELS.scrollLatest}><ScrollLatestIcon /></button>}
           </section>
 
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
-                <header><b>Story model</b><small>选择本轮对话使用的模型</small></header>
-                {models.map((model) => (
+                <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
+                {(guest ? GUEST_MODEL_TEASER : models).map((model) => (
                   <button
                     key={model.profile}
-                    className={model.profile === conversation.model_profile ? "selected" : ""}
+                    className={!guest && model.profile === conversation.model_profile ? "selected" : ""}
                     disabled={sending || switchingModel}
-                    onClick={() => { void selectModel(model.profile); setComposerPanel(null); }}
+                    onClick={() => chooseModel(model.profile)}
                   >
-                    <span><b>{model.display_name}</b><small>{model.coin_cost} coins / message</small></span>
-                    <i>{model.profile === conversation.model_profile ? "✓" : ""}</i>
+                    <span><b>{modelName(model)}</b><small>{guest ? "Sign in to unlock" : `${model.coin_cost} coins / message`}</small></span>
+                    <i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i>
                   </button>
                 ))}
               </div>
@@ -617,7 +849,7 @@ export default function ChatPage() {
               <div className="composer-popover info-popover">
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 {conversationTools.role_card ? (
-                  <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} 首版使用默认测试身份，后续接入可编辑角色卡。</small></>
+                  <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} Using a default test identity for now; editable role cards coming soon.</small></>
                 ) : <p className="empty-pin"><RoleIcon /><strong>No role card selected</strong></p>}
               </div>
             )}
@@ -625,21 +857,15 @@ export default function ChatPage() {
               <div className="composer-popover info-popover">
                 <header><b>Pinned</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 {conversationTools.pins.length === 0 ? <p className="empty-pin"><NoteIcon /><strong>No pinned memories</strong></p> : conversationTools.pins.map((pin) => <p key={pin.id}>{pin.content}</p>)}
-                <small>置顶内容会作为长期事实参与后续对话。首版 fallback 不写入模型上下文。</small>
+                <small>Pinned notes act as long-term facts in later turns. (Fallback build: not yet written into model context.)</small>
               </div>
             )}
             <div className="composer-tools">
-              {!showProfile && <button onClick={() => setShowProfile(true)}><RoleIcon />Profile</button>}
-              <button className="model-trigger has-tooltip" data-tooltip={selectedModel ? `${selectedModel.display_name} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><ModelIcon /></button>
-              <button onClick={() => setComposerPanel(composerPanel === "role" ? null : "role")}><RoleIcon />Role Card</button>
-              <button onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><NoteIcon />Pinned</button>
-              <span />
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Create image · coming soon" aria-label="生成场景图片，暂未开放" disabled><SceneImageIcon /></button>
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Create video · coming soon" aria-label="生成场景视频，暂未开放" disabled><SceneVideoIcon /></button>
-              <button className="icon-only has-tooltip unavailable-tool" data-tooltip="Media gallery · coming soon" aria-label="媒体图库，暂未开放" disabled><GalleryIcon /></button>
+              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "pinned" ? null : "pinned")}><CommentIcon /><span className="chat-card-pill-label">Pinned</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
-              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
+              <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label={CHAT_LABELS.inspiration} onClick={useInspiration}><InspirationIcon /></button>
               <textarea
                 ref={desktopTextareaRef}
                 value={text}
@@ -650,12 +876,17 @@ export default function ChatPage() {
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder="Enter to send, Shift+Enter for new line"
+                placeholder="Enter to send，shift+enter for new line"
                 rows={1}
-                disabled={sending || switchingModel}
+                disabled={restarting || switchingModel}
               />
-              <span className="composer-cost">{selectedModel?.coin_cost ?? 0} ✦</span>
-              <button type="submit" className="reference-send" disabled={!text.trim() || sending || switchingModel} aria-label="发送消息"><SendIcon /></button>
+              <button
+                type={canStopGeneration ? "button" : "submit"}
+                className={`reference-send${canStopGeneration ? " is-stopping" : ""}`}
+                disabled={restarting || switchingModel || generationState === "cancelling" || (generating && !canStopGeneration) || (!generating && !text.trim())}
+                onClick={canStopGeneration ? stopGeneration : undefined}
+                aria-label={canStopGeneration ? CHAT_LABELS.stop : CHAT_LABELS.send}
+              >{canStopGeneration ? <StopIcon /> : <SendIcon />}</button>
             </form>
           </section>
         </section>
@@ -666,12 +897,31 @@ export default function ChatPage() {
       {showRestart && (
         <div className="modal-backdrop" onClick={() => setShowRestart(false)}>
           <div className="restart-modal" onClick={(event) => event.stopPropagation()}>
-            <span className="modal-icon">↺</span><h2>重新开始这段关系？</h2>
-            <p>当前聊天记录会被归档，新对话将从角色的开场白重新开始。</p>
-            <div><button className="secondary" onClick={() => setShowRestart(false)}>取消</button><button className="danger" onClick={() => void confirmRestart()}>重新开始</button></div>
+            <span className="modal-icon">↺</span><h2>Restart this relationship?</h2>
+            <p>The current chat will be archived and a new conversation will start from the character&apos;s greeting.</p>
+            <div><button className="secondary" onClick={() => setShowRestart(false)}>Cancel</button><button className="danger" disabled={sending} onClick={() => void confirmRestart()}>Restart</button></div>
           </div>
         </div>
       )}
+      {signInOpen && <EmailSignInDialog onAuthenticated={() => {
+        setSignInOpen(false);
+        const wanted = pendingModel;
+        const convId = conversation?.id;
+        setPendingModel(null);
+        // Reward the sign-in immediately: switch to the model the guest just tapped
+        // on the same (promoted) conversation, then reload so the member UI + kept
+        // context render together. If the switch is unavailable, fall back silently.
+        void (async () => {
+          await refresh();
+          if (wanted && convId) { try { await updateModel(convId, wanted); } catch { /* keep default model */ } }
+          await load();
+        })();
+      }} onClose={() => { setPendingModel(null); setSignInOpen(false); }} />}
+      {showWelcome && <WelcomeDialog onComplete={() => { setShowWelcome(false); void refresh(); }} onClose={() => setShowWelcome(false)} />}
     </main>
   );
+}
+
+export default function ChatPage() {
+  return <ChatContent />;
 }
