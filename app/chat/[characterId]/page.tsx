@@ -433,7 +433,7 @@ function ChatContent() {
               setMessages((current) => current.map((item) => item.id === assistantId
                 ? { ...item, status: "failed" }
                 : item.id === requestId ? { ...item, status: accepted ? "completed" : "failed" } : item));
-              setText((current) => current || content);
+              if (!accepted) setText((current) => current || content);
               setError(messageForCode(streamEvent.code, "The reply could not be generated. Please try again."));
             }
           },
@@ -465,7 +465,7 @@ function ChatContent() {
       }
       if (redirectIfUnauthorized(sendError)) return;
       setError(errorMessage(sendError, { offline: SEND_FALLBACK, fallback: SEND_FALLBACK }));
-      setText((current) => current || content);
+      if (!accepted) setText((current) => current || content);
     } finally {
       if (activeTurnRef.current?.requestId === requestId) activeTurnRef.current = null;
       if (abortRef.current === controller) abortRef.current = null;
