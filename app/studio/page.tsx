@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
-import { CloseIcon, CopyIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
+import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
+import { shareCharacter } from "@/lib/character-share";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins } from "@/lib/format";
 import type { AuthUser } from "@/lib/types";
@@ -43,6 +44,7 @@ export default function StudioPage() {
   const [uidCopied, setUidCopied] = useState(false);
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [shareNotice, setShareNotice] = useState("");
 
   async function load() {
     setLoading(true); setError("");
@@ -123,6 +125,23 @@ export default function StudioPage() {
     } catch { setUidCopied(false); }
   }
 
+  async function shareWork(work: CreationWork) {
+    const characterId = work.published_character_id;
+    if (!characterId) return;
+    try {
+      const result = await shareCharacter({
+        characterId,
+        title: work.content.display_name || "Plum character",
+        text: work.content.intro || "A character on Plum",
+      });
+      if (result === "copied") setShareNotice("Link copied");
+      if (result === "dismissed") return;
+    } catch {
+      setShareNotice("Could not share this character");
+    }
+    window.setTimeout(() => setShareNotice(""), 2200);
+  }
+
   function saveProfile(event: FormEvent) {
     event.preventDefault();
     const value = profileName.trim();
@@ -171,10 +190,11 @@ export default function StudioPage() {
         <span className={`${styles.status} ${styles[work.moderation_status]}`}>{statusLabel(work)}</span>
         <div className={styles.more}>
           <button aria-label="More options" aria-expanded={menuWorkId === work.work_id} onClick={() => setMenuWorkId((current) => current === work.work_id ? null : work.work_id)}>•••</button>
-          {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}>Edit</button><button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}>Delete</button></div>}
+          {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}><EditIcon />Edit</button>{work.published_character_id && <button onClick={() => { setMenuWorkId(null); void shareWork(work); }}><ShareIcon />Share</button>}<button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}><DeleteIcon />Delete</button></div>}
         </div>
       </article>)}
     </section>}
+    {shareNotice && <div className={styles.shareNotice} role="status">{shareNotice}</div>}
     {deleteTarget && <div className={styles.backdrop} onMouseDown={() => !deleting && setDeleteTarget(null)}><section role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span>DELETE CHARACTER</span><h2>Delete {deleteTarget.content.display_name || "this draft"}?</h2><p>{deleteTarget.moderation_status === "approved" ? "It will be removed from public discovery and no new chats can be started. Existing conversation history is retained." : "This draft will be removed from My Studio."}</p><footer><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button disabled={deleting} className={styles.confirmDelete} onClick={() => void confirmDelete()}>{deleting ? "Deleting…" : "Delete"}</button></footer></section></div>}
   </main>;
 }
