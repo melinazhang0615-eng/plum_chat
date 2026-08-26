@@ -38,6 +38,10 @@ export function StudioIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V5.8A1.8 1.8 0 0 1 5.8 4h12.4A1.8 1.8 0 0 1 20 5.8v13.7" /><path d="M4 19.5c0-1.4 1.1-2.5 2.5-2.5H20M8 8h8M8 12h5" /></svg>;
 }
 
+export function PersonaIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20c.8-4 2.9-6 6.5-6s5.7 2 6.5 6" /><path d="M18.2 4.5 20 6.3l-1.8 1.8" /></svg>;
+}
+
 export function LogoutIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5.8A1.8 1.8 0 0 0 4 5.8v12.4A1.8 1.8 0 0 0 5.8 20H10M14 8l4 4-4 4M18 12H8" /></svg>;
 }

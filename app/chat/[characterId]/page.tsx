@@ -67,6 +67,40 @@ function NoteIcon() {
 function RoleIcon() {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.3" r="3" /><path d="M4.2 17c.45-3.56 2.4-5.34 5.8-5.34s5.35 1.78 5.8 5.34" /></svg>;
 }
+function PencilIcon() {
+  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 16h3l8.7-8.7a2.1 2.1 0 0 0-3-3L4 13v3Z" /><path d="m11.5 5.5 3 3" /></svg>;
+}
+
+function PersonaPicker({
+  roleCard,
+  guest,
+  onManage,
+  onAdd,
+}: {
+  roleCard: CharacterExperience["conversation_tools"]["role_card"];
+  guest: boolean;
+  onManage: () => void;
+  onAdd: () => void;
+}) {
+  return <div className="persona-picker">
+    <section>
+      <h3>Recommended Persona</h3>
+      {roleCard ? <article className="persona-option selected">
+        <span className="persona-option-avatar">{roleCard.display_name.slice(0, 1).toUpperCase()}</span>
+        <div><strong>{roleCard.display_name}</strong><small>{roleCard.description}</small></div>
+        <i aria-label="Selected">✓</i>
+        <button onClick={onManage} aria-label="Edit Persona"><PencilIcon /></button>
+      </article> : <div className="persona-option-empty">No Persona selected</div>}
+    </section>
+    <section>
+      <h3>My Personas</h3>
+      <button className="persona-add" onClick={onAdd}>
+        <span aria-hidden="true">＋</span>
+        <div><strong>{guest ? "Sign in to add a Persona" : "Add Persona"}</strong><small>Create a new identity for your stories.</small></div>
+      </button>
+    </section>
+  </div>;
+}
 function SceneImageIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 7.25h-3A3.25 3.25 0 0 0 8.75 10.5V18A3.25 3.25 0 0 0 12 21.25h6A3.25 3.25 0 0 0 21.25 18v-3.68" /><circle cx="12.5" cy="12.5" r="1.7" /><path d="m9 17.1 2.5-2.3 2.45 2.05 1.45-1.25 5.55 3.25M20 7.2l.78 1.8 1.8.78-1.8.78-.78 1.8-.78-1.8-1.8-.78 1.8-.78L20 7.2Z" /></svg>;
 }
@@ -638,6 +672,27 @@ function ChatContent() {
   const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
 
+  function openPersonaManager() {
+    setComposerPanel(null);
+    setMobileSheet(null);
+    if (guest) {
+      setSignInOpen(true);
+      return;
+    }
+    router.push("/studio?section=personas");
+  }
+
+  function openPersonaCreator() {
+    setComposerPanel(null);
+    setMobileSheet(null);
+    if (guest) {
+      setSignInOpen(true);
+      return;
+    }
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    router.push(`/personas/new?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
   function scrollToLatest() {
     nearBottomRef.current = { desktop: true, mobile: true };
     [desktopMessageStageRef.current, mobileMessageStageRef.current].forEach((stage) => {
@@ -1158,6 +1213,7 @@ function ChatContent() {
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
           <div className="mobile-tool-row">
             <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+            <button className="mobile-card-pill" onClick={() => setMobileSheet("role")}><RoleIcon /><span className="mobile-card-pill-label">Role Card</span></button>
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label={CHAT_LABELS.pinned}><CommentIcon /><span className="mobile-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
           </div>
           <form className="mobile-composer" onSubmit={submit}>
@@ -1225,7 +1281,7 @@ function ChatContent() {
               {mobileSheet === "model" && <div className="mobile-model-list">{models.length === 0 ? <p className="model-list-empty">No models are available right now.</p> : models.map((model) => (
                 <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}<em className="model-tier">{model.tier_label}</em></b><small>{model.description}</small><small>{guest ? `Sign in to unlock · ${modelPrice(model)}` : modelPrice(model)}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
-              {mobileSheet === "role" && <div className="mobile-sheet-copy">{conversationTools.role_card ? <><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><div><b>{conversationTools.role_card.display_name}</b><p>{conversationTools.role_card.description}</p></div></> : <p>No role card selected</p>}</div>}
+              {mobileSheet === "role" && <PersonaPicker roleCard={conversationTools.role_card} guest={guest} onManage={openPersonaManager} onAdd={openPersonaCreator} />}
               {mobileSheet === "pinned" && <div className="memory-v1 mobile-memory-v1">
                 <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
                 <section className="permanent-memory-card">
@@ -1423,15 +1479,14 @@ function ChatContent() {
               </div>
             )}
             {composerPanel === "role" && (
-              <div className="composer-popover info-popover">
+              <div className="composer-popover info-popover persona-popover">
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
-                {conversationTools.role_card ? (
-                  <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} Using a default test identity for now; editable role cards coming soon.</small></>
-                ) : <p className="empty-pin"><RoleIcon /><strong>No role card selected</strong></p>}
+                <PersonaPicker roleCard={conversationTools.role_card} guest={guest} onManage={openPersonaManager} onAdd={openPersonaCreator} />
               </div>
             )}
             <div className="composer-tools">
               <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "role" ? null : "role")}><RoleIcon /><span className="chat-card-pill-label">Role Card</span></button>
               <button className="chat-card-pill" onClick={() => setMemoryPanelOpen((value) => !value)}><CommentIcon /><span className="chat-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>

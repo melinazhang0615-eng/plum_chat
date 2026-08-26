@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Brand } from "@/components/brand";
 import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
-import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
+import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, PersonaIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
 import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
@@ -16,6 +16,11 @@ import type { AuthUser } from "@/lib/types";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
+type StudioSection = "characters" | "personas";
+const STUDIO_SECTIONS: { id: StudioSection; label: string }[] = [
+  { id: "characters", label: "Characters" },
+  { id: "personas", label: "Personas" },
+];
 const PROFILE_NAME_KEY = "plum_profile_display_name";
 
 function statusLabel(work: CreationWork) {
@@ -34,6 +39,7 @@ export default function StudioPage() {
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CreationWork | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [section, setSection] = useState<StudioSection>("characters");
   const [view, setView] = useState<StudioView>("all");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [balance, setBalance] = useState(0);
@@ -67,7 +73,10 @@ export default function StudioPage() {
   }
 
   useEffect(() => {
-    const requestedView = new URLSearchParams(window.location.search).get("view");
+    const query = new URLSearchParams(window.location.search);
+    const requestedSection = query.get("section");
+    const requestedView = query.get("view");
+    if (requestedSection === "personas") setSection("personas");
     if (requestedView === "drafts" || requestedView === "published") setView(requestedView);
     void load();
   }, []);
@@ -81,6 +90,14 @@ export default function StudioPage() {
     const url = new URL(window.location.href);
     if (nextView === "all") url.searchParams.delete("view");
     else url.searchParams.set("view", nextView);
+    window.history.replaceState(null, "", url);
+  }
+
+  function selectSection(nextSection: StudioSection) {
+    setSection(nextSection);
+    const url = new URL(window.location.href);
+    if (nextSection === "characters") url.searchParams.delete("section");
+    else url.searchParams.set("section", nextSection);
     window.history.replaceState(null, "", url);
   }
 
@@ -174,8 +191,11 @@ export default function StudioPage() {
       <div className="studio-profile-actions"><button className="account-primary-button" onClick={() => { setProfileEditing(true); setProfileSaved(false); }}>Edit Profile</button></div>
     </section>
     {profileEditing && <div className="studio-profile-modal-backdrop" onMouseDown={() => setProfileEditing(false)}><section className="studio-profile-modal" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title" onMouseDown={(event) => event.stopPropagation()}><button className="studio-profile-modal-close" onClick={() => setProfileEditing(false)} aria-label="Close edit profile"><CloseIcon /></button><form className="account-form" onSubmit={saveProfile}><div className="account-section-heading"><div><h2 id="edit-profile-title">Edit Profile</h2><p>Profile sync will connect to your account after the profile API is available.</p></div></div><div className="account-edit-avatar">{profileName.slice(0, 1).toUpperCase()}</div><label>Display name<input value={profileName} maxLength={40} onChange={(event) => { setProfileName(event.target.value); setProfileSaved(false); }} /></label><label>Account ID<input value={user?.id || ""} readOnly /></label><div className="account-form-actions"><button type="button" className="account-secondary-button" onClick={() => setProfileEditing(false)}>Cancel</button><button className="account-primary-button" type="submit" disabled={!profileName.trim()}>Save changes</button>{profileSaved && <span className="account-save-note">Saved on this device</span>}</div></form></section></div>}
-    <section className={styles.heading}><div><span>CREATOR SPACE</span><h1>My Studio</h1><p>Manage drafts, review status, and published characters.</p></div></section>
-    <nav className={styles.views} aria-label="Studio sections">
+    <section className={styles.heading}><div><span>CREATOR SPACE</span><h1>My Studio</h1><p>Manage everything you create and use in your stories.</p></div></section>
+    <nav className={styles.sections} aria-label="My Studio">
+      {STUDIO_SECTIONS.map((item) => <button key={item.id} className={section === item.id ? styles.active : ""} onClick={() => selectSection(item.id)}>{item.label}</button>)}
+    </nav>
+    {section === "characters" ? <><nav className={styles.views} aria-label="Character sections">
       <button className={view === "all" ? styles.active : ""} onClick={() => selectView("all")}><span>All works</span><b>{items.length}</b></button>
       <button className={view === "drafts" ? styles.active : ""} onClick={() => selectView("drafts")}><span>Draft Box</span><b>{draftItems.length}</b></button>
       <button className={view === "published" ? styles.active : ""} onClick={() => selectView("published")}><span>Published</span><b>{publishedItems.length}</b></button>
@@ -193,6 +213,11 @@ export default function StudioPage() {
           {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}><EditIcon />Edit</button>{work.published_character_id && <button onClick={() => { setMenuWorkId(null); void shareWork(work); }}><ShareIcon />Share</button>}<button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}><DeleteIcon />Delete</button></div>}
         </div>
       </article>)}
+    </section>}</> : <section className={styles.personas}>
+      <PersonaIcon />
+      <h2>Your personas</h2>
+      <p>Choose who you are in your stories.</p>
+      <button onClick={() => router.push(`/personas/new?returnTo=${encodeURIComponent("/studio?section=personas")}`)}>Create Persona</button>
     </section>}
     {shareNotice && <div className={styles.shareNotice} role="status">{shareNotice}</div>}
     {deleteTarget && <div className={styles.backdrop} onMouseDown={() => !deleting && setDeleteTarget(null)}><section role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span>DELETE CHARACTER</span><h2>Delete {deleteTarget.content.display_name || "this draft"}?</h2><p>{deleteTarget.moderation_status === "approved" ? "It will be removed from public discovery and no new chats can be started. Existing conversation history is retained." : "This draft will be removed from My Studio."}</p><footer><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button disabled={deleting} className={styles.confirmDelete} onClick={() => void confirmDelete()}>{deleting ? "Deleting…" : "Delete"}</button></footer></section></div>}
