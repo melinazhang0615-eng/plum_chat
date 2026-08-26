@@ -40,3 +40,63 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+.tagRail {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 1px 0 3px;
+  scrollbar-width: none;
+  overscroll-behavior-inline: contain;
+}
+
+.tagRail::-webkit-scrollbar {
+  display: none;
+}
+
+.tagRail button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.tagRail button:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.32);
+  background: rgba(255, 255, 255, 0.07);
+  transform: translateY(-1px);
+}
+
+.tagRail button:focus-visible {
+  outline: 2px solid rgba(216, 184, 255, 0.82);
+  outline-offset: 2px;
+}
+
+.tagRail button.activeTag {
+  color: #211823;
+  border-color: rgba(255, 255, 255, 0.92);
+  background: #fff;
+}
+
+@media (max-width: 560px) {
+  .tagRail {
+    gap: 6px;
+    margin-right: -10px;
+    padding-right: 10px;
+  }
+
+  .tagRail button {
+    min-height: 30px;
+    padding: 0 12px;
+    font-size: 10px;
+  }
+}
