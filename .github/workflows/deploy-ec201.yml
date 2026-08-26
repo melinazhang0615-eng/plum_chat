@@ -1,22 +1,16 @@
-name: Test EC201 SSH
+script: |
+  set -e
 
-on:
-  workflow_dispatch:
+  cd /opt/workspace/plum_chat
 
-jobs:
-  test-ssh:
-    runs-on: ubuntu-latest
-    environment: ec201
+  echo "Before:"
+  git rev-parse --short HEAD
 
-    steps:
-      - name: Test SSH connection
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            echo "SSH connected successfully"
-            whoami
-            hostname
-            pwd
+  git fetch origin
+  git checkout main
+  git pull --ff-only origin main
+
+  echo "After:"
+  git rev-parse --short HEAD
+
+  git status
