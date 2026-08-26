@@ -1,16 +1,33 @@
-script: |
-  set -e
+name: Test EC201 Deploy
 
-  cd /opt/workspace/plum_chat
+on:
+  workflow_dispatch:
 
-  echo "Before:"
-  git rev-parse --short HEAD
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ec201
 
-  git fetch origin
-  git checkout main
-  git pull --ff-only origin main
+    steps:
+      - name: Update code on EC201
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
 
-  echo "After:"
-  git rev-parse --short HEAD
+            cd /opt/workspace/plum_chat
 
-  git status
+            echo "Before:"
+            git rev-parse --short HEAD
+
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+
+            echo "After:"
+            git rev-parse --short HEAD
+
+            git status
