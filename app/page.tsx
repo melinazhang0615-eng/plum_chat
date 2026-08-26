@@ -13,7 +13,7 @@ import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins, formatCompactCount } from "@/lib/format";
-import { MATURE_CONTENT_NOT_ALLOWED_MESSAGE, preferenceToFeedGender, profileAllowsMature } from "@/lib/audience-policy";
+import { AUDIENCE_ONBOARDING_SEEN_KEY, MATURE_CONTENT_NOT_ALLOWED_MESSAGE, preferenceToFeedGender, profileAllowsMature, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import type { AuthUser, FeedCharacter, GuestProfile } from "@/lib/types";
 import styles from "./page.module.css";
 
@@ -73,6 +73,7 @@ function FeedContent() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onboardingAutoPrompted = useRef(false);
   const preferenceAppliedFor = useRef<string | null>(null);
   const audienceProfile = context?.actor.kind === "visitor" ? null : context?.actor.profile ?? null;
 
@@ -167,6 +168,21 @@ function FeedContent() {
   useEffect(() => () => inFlight.current?.abort(), []);
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   useEffect(() => {
+    if (authLoading || welcomeOpen || onboardingAutoPrompted.current) return;
+    const actor = context?.actor;
+    const hasSeen = Boolean(window.localStorage.getItem(AUDIENCE_ONBOARDING_SEEN_KEY));
+    // Local-only QA hook: exercise the real same-origin submit path without deleting site data.
+    const forceOpen = process.env.NODE_ENV !== "production"
+      && new URLSearchParams(window.location.search).get("onboarding") === "1";
+    if (!forceOpen && !shouldAutoOpenAudienceOnboarding(actor, hasSeen)) return;
+    onboardingAutoPrompted.current = true;
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
+      setWelcomeOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [authLoading, context, welcomeOpen]);
+  useEffect(() => {
     if (!context) return;
     if (context.actor.kind === "member") { setUser(context.actor.user); setBalance(context.wallet?.balance ?? 0); }
     else { setUser(null); setBalance(0); }
@@ -199,6 +215,7 @@ function FeedContent() {
       // Fallback while the backend still requires a completed profile first
       // (403 guest_profile_required): show the Welcome as a pre-chat gate, then retry.
       if (openError instanceof ApiError && ["guest_profile_required", "audience_profile_required"].includes(openError.message)) {
+        window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
         setPendingTarget(characterId); setWelcomeOpen(true); return;
       }
       if (openError instanceof ApiError && openError.message === "mature_content_not_allowed") {
@@ -217,6 +234,7 @@ function FeedContent() {
   function requestMature(action: "filter" | string) {
     const actor = context?.actor;
     if (!actor || actor.kind === "visitor" || !actor.profile_complete || !audienceProfile) {
+      window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
       setPendingMatureAction(action);
       setWelcomeOpen(true);
       return;
