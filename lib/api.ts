@@ -1,4 +1,4 @@
-import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, PreferenceSource, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, PreferenceSource, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
 import { cookieValue } from "./cookies.ts";
 import { reportApiFailure, reportStreamFailure } from "./telemetry.ts";
@@ -250,6 +250,10 @@ export function getCreatorTags() {
   return request<{ status: string; items: CreatorTag[] }>("/creator/tags");
 }
 
+export function getFeedTags() {
+  return request<{ status: string; items: CreatorTag[] }>("/feed/tags");
+}
+
 export type CreateCharacterInput = {
   idempotency_key: string;
   display_name: string;
@@ -379,10 +383,14 @@ export function createGuestSession() {
   return request<AuthContext>("/auth/guest/session", { method: "POST" });
 }
 
-export function updateGuestProfile(profile: GuestProfile & { adult_confirmed: boolean }) {
+export function updateGuestProfile(profile: Pick<GuestProfile, "age_band" | "relationship_preference">) {
   return request<AuthContext>("/auth/guest/profile", {
     method: "PATCH",
-    body: JSON.stringify(profile),
+    body: JSON.stringify({
+      ...profile,
+      // The choice is optional in the UI; the API represents an empty choice explicitly.
+      relationship_preference: profile.relationship_preference ?? "no_preference",
+    }),
   });
 }
 
@@ -462,6 +470,7 @@ export type FeedPage = { status: string; items: FeedCharacter[]; next_cursor: st
 export type FeedGender = "male" | "female" | "non_binary";
 /** `plum_characters.content_rating` 的取值；`mature` 就是 UI 上的 Limitless。 */
 export type FeedRating = "general" | "mature";
+export type FeedView = "for_you" | "trending" | "latest" | "popular" | "favorites";
 
 /**
  * One page of the public catalog. Search and tag filtering happen **on the server**: filtering
@@ -475,8 +484,10 @@ export function getFeed(
   params: {
     q?: string;
     tags?: string[];
+    tagId?: string | null;
     gender?: FeedGender | null;
     rating?: FeedRating | null;
+    view?: FeedView;
     cursor?: string | null;
     limit?: number;
   } = {},
@@ -487,8 +498,10 @@ export function getFeed(
   // Truncate rather than let a pasted paragraph come back as a 422 the user cannot act on.
   if (term) search.set("q", term.slice(0, FEED_QUERY_MAX));
   for (const tag of params.tags ?? []) if (tag.trim()) search.append("tags", tag.trim());
+  if (params.tagId?.trim()) search.set("tag_id", params.tagId.trim());
   if (params.gender) search.set("gender", params.gender);
   if (params.rating) search.set("rating", params.rating);
+  if (params.view) search.set("view", params.view);
   if (params.cursor) search.set("cursor", params.cursor);
   search.set("limit", String(params.limit ?? FEED_PAGE_LIMIT));
   return request<FeedPage>(`/feed?${search.toString()}`, init);
@@ -526,6 +539,21 @@ export function updateModel(conversationId: string, modelProfile: ModelProfile["
   );
 }
 
+export function createConversationPin(conversationId: string, input: { content: string; message_id?: string | null }) {
+  return request<{ status: string; pin: ConversationPin }>(
+    `/conversations/${conversationId}/pins`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+/** Rewrite a memory the user wrote by hand. Only manual pins are editable. */
+export function updateConversationPin(conversationId: string, pinId: string, input: { content: string }) {
+  return request<{ status: string; pin: ConversationPin }>(
+    `/conversations/${conversationId}/pins/${pinId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
 export function restartConversation(conversationId: string) {
   return request<{
     status: string;
@@ -550,7 +578,24 @@ export function setCharacterFavorite(characterId: string, active: boolean) {
   );
 }
 
-export function sendTurn(conversationId: string, text: string, requestId: string, guest = false) {
+export type TurnKind = "message" | "continue";
+
+/**
+ * `continue` asks the character to keep going from its last reply. The backend
+ * rejects any text on a continue action and does not persist an inbound message,
+ * so no user bubble is created. Guests must always send the action envelope.
+ */
+function turnBody(text: string, requestId: string, guest: boolean, kind: TurnKind) {
+  return JSON.stringify({
+    client_message_id: requestId,
+    idempotency_key: requestId,
+    ...(kind === "continue"
+      ? { action: { kind: "continue" } }
+      : guest ? { action: { kind: "message", text } } : { text }),
+  });
+}
+
+export function sendTurn(conversationId: string, text: string, requestId: string, guest = false, kind: TurnKind = "message") {
   return request<{
     status: string;
     reply: { message_id: string | null; text: string };
@@ -560,11 +605,7 @@ export function sendTurn(conversationId: string, text: string, requestId: string
     deduplicated: boolean;
   }>(`/conversations/${conversationId}/turns`, {
     method: "POST",
-    body: JSON.stringify({
-      client_message_id: requestId,
-      idempotency_key: requestId,
-      ...(guest ? { action: { kind: "message", text } } : { text }),
-    }),
+    body: turnBody(text, requestId, guest, kind),
   });
 }
 
@@ -585,6 +626,7 @@ export async function sendTurnStream({
   text,
   requestId,
   guest = false,
+  kind = "message",
   signal,
   onEvent,
 }: {
@@ -592,6 +634,7 @@ export async function sendTurnStream({
   text: string;
   requestId: string;
   guest?: boolean;
+  kind?: TurnKind;
   signal: AbortSignal;
   onEvent: (event: TurnStreamEvent) => void;
 }): Promise<void> {

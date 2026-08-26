@@ -1,0 +1,205 @@
+name: Deploy EC201
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ec201
+
+    steps:
+      - name: Collect deployment context
+        id: release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -u
+
+          COMMIT_TITLE=${COMMIT_MESSAGE%%$'\n'*}
+          COMMIT_TITLE=${COMMIT_TITLE:-"Commit ${GITHUB_SHA:0:7}"}
+          COMMIT_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA"
+          CONTEXT=$(jq -cn \
+            --arg title "$COMMIT_TITLE" \
+            --arg body "$COMMIT_MESSAGE" \
+            --arg author "$GITHUB_ACTOR" \
+            --arg url "$COMMIT_URL" \
+            '{kind: "commit", title: $title, body: $body, author: $author, url: $url}')
+
+          if PULLS=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls"); then
+            PR=$(jq -c '[.[] | select(.merged_at != null and .base.ref == "main")] | sort_by(.merged_at) | last // empty' <<<"$PULLS")
+            if [ -n "$PR" ]; then
+              CONTEXT=$(jq -c '{
+                kind: "pull_request",
+                number,
+                title,
+                body: (.body // ""),
+                author: (.user.login // "unknown"),
+                url: .html_url
+              }' <<<"$PR")
+            fi
+          fi
+
+          printf 'context=%s\n' "$CONTEXT" >> "$GITHUB_OUTPUT"
+          printf 'started_at=%s\n' "$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Feishu - deployment started
+        continue-on-error: true
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_DEPLOY_CHAT_ID: ${{ secrets.FEISHU_DEPLOY_CHAT_ID }}
+          RELEASE_CONTEXT: ${{ steps.release.outputs.context }}
+        run: |
+          set -e
+
+          AUTH_PAYLOAD=$(jq -n \
+            --arg app_id "$FEISHU_APP_ID" \
+            --arg app_secret "$FEISHU_APP_SECRET" \
+            '{app_id: $app_id, app_secret: $app_secret}')
+          TOKEN=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_PAYLOAD" \
+            https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal \
+            | jq -er '.tenant_access_token')
+
+          CONTEXT=${RELEASE_CONTEXT:-"{}"}
+          RELEASE_KIND=$(jq -r '.kind // "commit"' <<<"$CONTEXT")
+          RELEASE_TITLE=$(jq -r '.title // "Unknown release"' <<<"$CONTEXT")
+          RELEASE_AUTHOR=$(jq -r '.author // "unknown"' <<<"$CONTEXT")
+          RELEASE_URL=$(jq -r '.url // ""' <<<"$CONTEXT")
+          if [ "$RELEASE_KIND" = "pull_request" ]; then
+            PR_NUMBER=$(jq -r '.number' <<<"$CONTEXT")
+            RELEASE_LABEL="PR #$PR_NUMBER: $RELEASE_TITLE"
+            LINK_LABEL="PR"
+          else
+            RELEASE_LABEL="$RELEASE_TITLE"
+            LINK_LABEL="Commit"
+          fi
+
+          TEXT=$(printf 'Plum frontend deployment started\nEnvironment: EC201\nRelease: %s\nAuthor: %s\nCommit: %.7s\nTriggered by: %s\n%s: %s\nRun: %s/%s/actions/runs/%s' \
+            "$RELEASE_LABEL" "$RELEASE_AUTHOR" "$GITHUB_SHA" "$GITHUB_ACTOR" \
+            "$LINK_LABEL" "$RELEASE_URL" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          MESSAGE_PAYLOAD=$(jq -n \
+            --arg receive_id "$FEISHU_DEPLOY_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{receive_id: $receive_id, msg_type: "text", content: ({text: $text} | tojson)}')
+          RESPONSE=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+            -d "$MESSAGE_PAYLOAD")
+          test "$(jq -r '.code' <<<"$RESPONSE")" = "0"
+
+      - name: Deploy frontend to EC201
+        id: deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            cd /opt/workspace/plum_chat
+
+            git fetch origin
+            git checkout main
+            git pull --ff-only origin main
+
+            export PATH="/home/ubuntu/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:$PATH"
+            NPM="/home/ubuntu/.nvm/versions/node/v22.23.2/bin/npm"
+
+            "$NPM" ci
+            PLUM_API_ORIGIN=http://127.0.0.1:8180 "$NPM" run build
+
+            systemctl --user restart plum-chat-frontend.service
+            systemctl --user status plum-chat-frontend.service --no-pager -n 50
+
+            sleep 2
+            curl -fsS http://127.0.0.1:3000/ -o /dev/null
+
+            echo "Deployment successful"
+
+      - name: Notify Feishu - deployment result
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_DEPLOY_CHAT_ID: ${{ secrets.FEISHU_DEPLOY_CHAT_ID }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          RELEASE_CONTEXT: ${{ steps.release.outputs.context }}
+          DEPLOY_STARTED_AT: ${{ steps.release.outputs.started_at }}
+        run: |
+          set -e
+
+          AUTH_PAYLOAD=$(jq -n \
+            --arg app_id "$FEISHU_APP_ID" \
+            --arg app_secret "$FEISHU_APP_SECRET" \
+            '{app_id: $app_id, app_secret: $app_secret}')
+          TOKEN=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_PAYLOAD" \
+            https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal \
+            | jq -er '.tenant_access_token')
+
+          if [ "$DEPLOY_OUTCOME" = "success" ]; then
+            STATUS="succeeded"
+          else
+            STATUS="failed"
+          fi
+
+          NOW=$(date +%s)
+          if [[ "$DEPLOY_STARTED_AT" =~ ^[0-9]+$ ]]; then
+            ELAPSED=$((NOW - DEPLOY_STARTED_AT))
+            DURATION=$(printf '%dm %ds' "$((ELAPSED / 60))" "$((ELAPSED % 60))")
+          else
+            DURATION="unknown"
+          fi
+
+          CONTEXT=${RELEASE_CONTEXT:-"{}"}
+          RELEASE_KIND=$(jq -r '.kind // "commit"' <<<"$CONTEXT")
+          RELEASE_TITLE=$(jq -r '.title // "Unknown release"' <<<"$CONTEXT")
+          RELEASE_AUTHOR=$(jq -r '.author // "unknown"' <<<"$CONTEXT")
+          RELEASE_URL=$(jq -r '.url // ""' <<<"$CONTEXT")
+          RELEASE_NOTES=$(jq -r '(.body // "" | gsub("\r"; "") | if length == 0 then "No description provided." elif length > 1800 then .[0:1800] + "\n..." else . end)' <<<"$CONTEXT")
+          if [ "$RELEASE_KIND" = "pull_request" ]; then
+            PR_NUMBER=$(jq -r '.number' <<<"$CONTEXT")
+            RELEASE_LABEL="PR #$PR_NUMBER: $RELEASE_TITLE"
+            LINK_LABEL="PR"
+          else
+            RELEASE_LABEL="$RELEASE_TITLE"
+            LINK_LABEL="Commit"
+          fi
+
+          TEXT=$(printf 'Plum frontend deployment %s\nEnvironment: EC201\nDuration: %s\nRelease: %s\nAuthor: %s\n\nRelease notes:\n%s\n\n%s: %s\nCommit: %.7s\nTriggered by: %s\nRun: %s/%s/actions/runs/%s' \
+            "$STATUS" "$DURATION" "$RELEASE_LABEL" "$RELEASE_AUTHOR" "$RELEASE_NOTES" \
+            "$LINK_LABEL" "$RELEASE_URL" "$GITHUB_SHA" "$GITHUB_ACTOR" \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          MESSAGE_PAYLOAD=$(jq -n \
+            --arg receive_id "$FEISHU_DEPLOY_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{receive_id: $receive_id, msg_type: "text", content: ({text: $text} | tojson)}')
+          RESPONSE=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+            -d "$MESSAGE_PAYLOAD")
+          test "$(jq -r '.code' <<<"$RESPONSE")" = "0"

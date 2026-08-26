@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
-import { ApiError, createConversation, getFeed, sendTurnStream } from "../lib/api.ts";
+import { ApiError, createConversation, getFeed, sendTurnStream, updateGuestProfile } from "../lib/api.ts";
 
 function sseResponse(events) {
   const body = events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join("");
@@ -235,6 +235,26 @@ test("request timeout, retry and CSRF assembly", async (suite) => {
   });
 });
 
+test("an unselected welcome preference is submitted as no preference", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    };
+
+    await updateGuestProfile({ age_band: "25_34", relationship_preference: null });
+
+    assert.deepEqual(requestBody, {
+      age_band: "25_34",
+      relationship_preference: "no_preference",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("feed query string", async (suite) => {
   const originalFetch = globalThis.fetch;
   suite.after(() => { globalThis.fetch = originalFetch; });
@@ -280,6 +300,12 @@ test("feed query string", async (suite) => {
     await getFeed({ gender: "non_binary", rating: "mature" });
     assert.equal(params().get("gender"), "non_binary", "the wire value, not the menu label 'Other'");
     assert.equal(params().get("rating"), "mature");
+  });
+
+  await suite.test("sends the server view and stable Tag ID", async () => {
+    await getFeed({ view: "trending", tagId: "tag_slow_burn" });
+    assert.equal(params().get("view"), "trending");
+    assert.equal(params().get("tag_id"), "tag_slow_burn");
   });
 
   await suite.test("omits a filter that is off rather than sending an empty value", async () => {
