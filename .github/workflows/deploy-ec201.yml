@@ -1,33 +1,22 @@
-name: Test EC201 Deploy
+script: |
+  set -e
 
-on:
-  workflow_dispatch:
+  cd /opt/workspace/plum_chat
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment: ec201
+  git fetch origin
+  git checkout main
+  git pull --ff-only origin main
 
-    steps:
-      - name: Update code on EC201
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
+  export PATH="/home/ubuntu/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin:$PATH"
+  NPM="/home/ubuntu/.nvm/versions/node/v22.23.2/bin/npm"
 
-            cd /opt/workspace/plum_chat
+  "$NPM" ci
+  PLUM_API_ORIGIN=http://127.0.0.1:8180 "$NPM" run build
 
-            echo "Before:"
-            git rev-parse --short HEAD
+  systemctl --user restart plum-chat-frontend.service
+  systemctl --user status plum-chat-frontend.service --no-pager -n 50
 
-            git fetch origin
-            git checkout main
-            git pull --ff-only origin main
+  sleep 2
+  curl -fsS http://127.0.0.1:3000/ -o /dev/null
 
-            echo "After:"
-            git rev-parse --short HEAD
-
-            git status
+  echo "Deployment successful"
