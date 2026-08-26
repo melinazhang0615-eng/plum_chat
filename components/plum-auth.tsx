@@ -84,13 +84,12 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: (profile: G
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ineligible = ageBand === "13_or_younger";
-  const ready = Boolean(ageBand && relationshipPreference);
+  const ready = Boolean(ageBand);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!ready || !ageBand || submitting) return;
     if (ineligible) { setConfirmedIneligible(true); return; }
-    if (!relationshipPreference) return;
     setSubmitting(true); setError(null);
     try {
       const next = await saveWelcome({ age_band: ageBand, relationship_preference: relationshipPreference });
@@ -113,19 +112,19 @@ export function WelcomeDialog({ onComplete, onClose }: { onComplete: (profile: G
       <p className="welcome-sub">Tell us more for a better personalized experience. Some content may not be suitable for users of all ages.</p>
 
       <div className="welcome-field">
-        <span>Who would you like to meet? <i>✳</i></span>
-        <div className="welcome-grid welcome-gender-grid">
-          {WELCOME_PREFERENCES.map((pref) => (
-            <button type="button" key={pref.value} className={relationshipPreference === pref.value ? "active" : ""} onClick={() => setRelationshipPreference(pref.value)}>{pref.emoji} {pref.label}</button>
+        <span>What&apos;s your age? <i>✳</i></span>
+        <div className="welcome-grid">
+          {WELCOME_AGE_BANDS.map((band) => (
+            <button type="button" key={band.value} className={ageBand === band.value ? "active" : ""} onClick={() => setAgeBand(band.value)}>{band.label}</button>
           ))}
         </div>
       </div>
 
       <div className="welcome-field">
-        <span>What&apos;s your age? <i>✳</i></span>
-        <div className="welcome-grid">
-          {WELCOME_AGE_BANDS.map((band) => (
-            <button type="button" key={band.value} className={ageBand === band.value ? "active" : ""} onClick={() => setAgeBand(band.value)}>{band.label}</button>
+        <span>Who would you like to meet? <i>Optional</i></span>
+        <div className="welcome-grid welcome-gender-grid">
+          {WELCOME_PREFERENCES.map((pref) => (
+            <button type="button" key={pref.value} className={relationshipPreference === pref.value ? "active" : ""} onClick={() => setRelationshipPreference(pref.value)}>{pref.emoji} {pref.label}</button>
           ))}
         </div>
       </div>

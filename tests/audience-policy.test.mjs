@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { preferenceToFeedGender, profileAllowsMature } from "../lib/audience-policy.ts";
+import { preferenceToFeedGender, profileAllowsMature, shouldAutoOpenAudienceOnboarding } from "../lib/audience-policy.ts";
 
 function profile(age_band, status = "accepted") {
   return { age_band, relationship_preference: null, genres: [], age_declaration: { status, version: "test", accepted_at: "2026-08-25" } };
@@ -23,4 +23,12 @@ test("only concrete character preferences become feed gender filters", () => {
   assert.equal(preferenceToFeedGender("non_binary"), "non_binary");
   assert.equal(preferenceToFeedGender("no_preference"), null);
   assert.equal(preferenceToFeedGender(null), null);
+});
+
+test("member profile state overrides the browser-level first-show marker", () => {
+  assert.equal(shouldAutoOpenAudienceOnboarding(null, false), true);
+  assert.equal(shouldAutoOpenAudienceOnboarding(null, true), false);
+  assert.equal(shouldAutoOpenAudienceOnboarding({ kind: "guest", profile_complete: false }, true), false);
+  assert.equal(shouldAutoOpenAudienceOnboarding({ kind: "member", profile_complete: false }, true), true);
+  assert.equal(shouldAutoOpenAudienceOnboarding({ kind: "member", profile_complete: true }, false), false);
 });

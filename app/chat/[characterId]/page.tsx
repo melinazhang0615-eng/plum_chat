@@ -11,6 +11,7 @@ import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum
 import { ApiError, cancelTurn, createConversation, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateModel } from "@/lib/api";
 import { CHAT_LABELS, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, messageStatusLabel } from "@/lib/copy";
 import { errorMessage, messageForCode } from "@/lib/error-messages";
+import { AUDIENCE_ONBOARDING_SEEN_KEY, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
@@ -153,14 +154,17 @@ function ChatContent() {
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+  const onboardingAutoPrompted = useRef(false);
   useEffect(() => {
-    if (loading) return;
+    if (loading || onboardingAutoPrompted.current) return;
     const actor = context?.actor;
-    const isNewUser = !actor || actor.kind === "visitor" || !actor.profile_complete;
-    if (!isNewUser) return;
-    // Persisted profile completion is the authority. Dismissing the dialog may defer
-    // onboarding for this visit, but cannot mark an incomplete profile as complete.
-    const timer = window.setTimeout(() => setShowWelcome(true), 2000);
+    const hasSeen = Boolean(window.localStorage.getItem(AUDIENCE_ONBOARDING_SEEN_KEY));
+    if (!shouldAutoOpenAudienceOnboarding(actor, hasSeen)) return;
+    onboardingAutoPrompted.current = true;
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
+      setShowWelcome(true);
+    }, 2000);
     return () => window.clearTimeout(timer);
   }, [loading, context]);
   const [error, setError] = useState<string | null>(null);
