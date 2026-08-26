@@ -282,6 +282,12 @@ test("feed query string", async (suite) => {
     assert.equal(params().get("rating"), "mature");
   });
 
+  await suite.test("sends the server view and stable Tag ID", async () => {
+    await getFeed({ view: "trending", tagId: "tag_slow_burn" });
+    assert.equal(params().get("view"), "trending");
+    assert.equal(params().get("tag_id"), "tag_slow_burn");
+  });
+
   await suite.test("omits a filter that is off rather than sending an empty value", async () => {
     // `?gender=` would be the server asking about a gender named "", and it would also split the
     // cacheable first page into two responses that mean the same thing.

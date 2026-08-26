@@ -250,6 +250,10 @@ export function getCreatorTags() {
   return request<{ status: string; items: CreatorTag[] }>("/creator/tags");
 }
 
+export function getFeedTags() {
+  return request<{ status: string; items: CreatorTag[] }>("/feed/tags");
+}
+
 export type CreateCharacterInput = {
   idempotency_key: string;
   display_name: string;
@@ -368,7 +372,7 @@ export function createGuestSession() {
   return request<AuthContext>("/auth/guest/session", { method: "POST" });
 }
 
-export function updateGuestProfile(profile: GuestProfile & { adult_confirmed: boolean }) {
+export function updateGuestProfile(profile: Pick<GuestProfile, "age_band" | "relationship_preference">) {
   return request<AuthContext>("/auth/guest/profile", {
     method: "PATCH",
     body: JSON.stringify(profile),
@@ -451,6 +455,7 @@ export type FeedPage = { status: string; items: FeedCharacter[]; next_cursor: st
 export type FeedGender = "male" | "female" | "non_binary";
 /** `plum_characters.content_rating` 的取值；`mature` 就是 UI 上的 Limitless。 */
 export type FeedRating = "general" | "mature";
+export type FeedView = "for_you" | "trending" | "latest" | "popular" | "favorites";
 
 /**
  * One page of the public catalog. Search and tag filtering happen **on the server**: filtering
@@ -464,8 +469,10 @@ export function getFeed(
   params: {
     q?: string;
     tags?: string[];
+    tagId?: string | null;
     gender?: FeedGender | null;
     rating?: FeedRating | null;
+    view?: FeedView;
     cursor?: string | null;
     limit?: number;
   } = {},
@@ -476,8 +483,10 @@ export function getFeed(
   // Truncate rather than let a pasted paragraph come back as a 422 the user cannot act on.
   if (term) search.set("q", term.slice(0, FEED_QUERY_MAX));
   for (const tag of params.tags ?? []) if (tag.trim()) search.append("tags", tag.trim());
+  if (params.tagId?.trim()) search.set("tag_id", params.tagId.trim());
   if (params.gender) search.set("gender", params.gender);
   if (params.rating) search.set("rating", params.rating);
+  if (params.view) search.set("view", params.view);
   if (params.cursor) search.set("cursor", params.cursor);
   search.set("limit", String(params.limit ?? FEED_PAGE_LIMIT));
   return request<FeedPage>(`/feed?${search.toString()}`, init);

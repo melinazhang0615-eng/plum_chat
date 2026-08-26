@@ -9,8 +9,9 @@ import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
 import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
-import { CHAT_LABELS, GUEST_BANNER, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, guestQuotaLabel, messageStatusLabel } from "@/lib/copy";
+import { CHAT_LABELS, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, messageStatusLabel } from "@/lib/copy";
 import { errorMessage, messageForCode } from "@/lib/error-messages";
+import { AUDIENCE_ONBOARDING_SEEN_KEY, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
@@ -195,15 +196,15 @@ function ChatContent() {
   const [switchingModel, setSwitchingModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
+  const onboardingAutoPrompted = useRef(false);
   useEffect(() => {
-    if (loading) return;
-    if (typeof window !== "undefined" && window.localStorage.getItem("plum_welcome_seen")) return;
+    if (loading || onboardingAutoPrompted.current) return;
     const actor = context?.actor;
-    const isNewUser = actor?.kind === "visitor" || (actor?.kind === "guest" && !actor.profile_complete);
-    if (!isNewUser) return;
-    // New users only, once ever: show Welcome ~2s after the opening line lands in the room.
+    const hasSeen = Boolean(window.localStorage.getItem(AUDIENCE_ONBOARDING_SEEN_KEY));
+    if (!shouldAutoOpenAudienceOnboarding(actor, hasSeen)) return;
+    onboardingAutoPrompted.current = true;
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem("plum_welcome_seen", "1");
+      window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
       setShowWelcome(true);
     }, 2000);
     return () => window.clearTimeout(timer);
@@ -244,6 +245,7 @@ function ChatContent() {
   // lists (~30ms), which is not worth paying just to disable one button.
   const memoryBusyRef = useRef(false);
   const [messageMenu, setMessageMenu] = useState<{ message: ChatMessage; x: number; y: number; anchor: HTMLElement } | null>(null);
+  const [mobileCharacterBackground, setMobileCharacterBackground] = useState(false);
 
   const selectedModel = useMemo(
     () => models.find((item) => item.profile === conversation?.model_profile),
@@ -635,7 +637,6 @@ function ChatContent() {
     });
   const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
-  const quotaLabel = guestQuotaLabel(guestQuota);
 
   function scrollToLatest() {
     nearBottomRef.current = { desktop: true, mobile: true };
@@ -1087,8 +1088,8 @@ function ChatContent() {
       <Image className="chat-world-bg" src={cover} alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" />
       <div className="chat-world-overlay" />
 
-      <section className="mobile-chat-shell" aria-label={CHAT_LABELS.room(displayName)}>
-        <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />
+      <section className={`mobile-chat-shell${mobileCharacterBackground ? " has-character-background" : ""}`} aria-label={CHAT_LABELS.room(displayName)}>
+        {mobileCharacterBackground && <Image className="mobile-chat-background" src={cover} alt="" fill priority sizes="(max-width: 767px) 100vw, 1px" />}
         <div className="mobile-chat-shade" />
 
         <header className="mobile-chat-header">
@@ -1155,7 +1156,6 @@ function ChatContent() {
 
         <section className="mobile-composer-panel">
           {error && <div className="mobile-composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-          {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{quotaLabel}<span>{GUEST_BANNER.savePrompt}</span></button>}
           <div className="mobile-tool-row">
             <button className="mobile-card-pill" onClick={() => setMobileSheet("model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="mobile-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
             <button className="mobile-card-pill" onClick={() => setMobileSheet("pinned")} aria-label={CHAT_LABELS.pinned}><CommentIcon /><span className="mobile-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
@@ -1241,7 +1241,7 @@ function ChatContent() {
                     : <div className="memory-list" ref={markMemoryListEnd} onScroll={(event) => markMemoryListEnd(event.currentTarget)}>{savedMemories.map((pin) => <div className="memory-entry" key={pin.id}><small>{memorySavedAt(pin)}</small><p>{pin.content}</p></div>)}</div>}
                 </section>
               </div>}
-              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button>{debugConsoleEnabled && <button onClick={() => { setMobileSheet(null); openDebugConsole(); }}><DebugIcon /><span><b>Debug console</b><small>Inspect this turn&apos;s prompt and context</small></span></button>}</div>}
+              {mobileSheet === "more" && <div className="mobile-sheet-menu"><button className="mobile-background-setting" aria-pressed={mobileCharacterBackground} onClick={() => setMobileCharacterBackground((enabled) => !enabled)}><RoleIcon /><span><b>Character chat background</b><small>Show character artwork behind messages</small></span><i className={mobileCharacterBackground ? "on" : ""}><em /></i></button><button onClick={() => { setMobileSheet(null); setShowMobileProfile(true); }}><RoleIcon /><span><b>Character profile</b><small>View story details and memories</small></span></button><button onClick={() => { setMobileSheet(null); void shareCharacter(); }}><ShareIcon /><span><b>Share character</b><small>Copy a link to this character</small></span></button><button onClick={() => { setMobileSheet(null); setShowRestart(true); }}><RestartIcon /><span><b>Restart story</b><small>Archive this chat and begin again</small></span></button>{debugConsoleEnabled && <button onClick={() => { setMobileSheet(null); openDebugConsole(); }}><DebugIcon /><span><b>Debug console</b><small>Inspect this turn&apos;s prompt and context</small></span></button>}</div>}
             </section>
           </div>
         )}
@@ -1406,7 +1406,6 @@ function ChatContent() {
 
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
-            {guest && <button className="guest-quota-banner" onClick={() => setSignInOpen(true)}>{quotaLabel}<span>{GUEST_BANNER.savePrompt}</span></button>}
             {composerPanel === "model" && (
               <div className="composer-popover model-popover">
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
