@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
-import { ApiError, createConversation, getFeed, sendTurnStream } from "../lib/api.ts";
+import { ApiError, createConversation, getFeed, sendTurnStream, updateGuestProfile } from "../lib/api.ts";
 
 function sseResponse(events) {
   const body = events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join("");
@@ -233,6 +233,26 @@ test("request timeout, retry and CSRF assembly", async (suite) => {
     await getFeed();
     assert.equal(headers["X-Plum-CSRF"], undefined);
   });
+});
+
+test("an unselected welcome preference is submitted as no preference", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      requestBody = JSON.parse(init.body);
+      return new Response(JSON.stringify({ status: "ok" }), { status: 200 });
+    };
+
+    await updateGuestProfile({ age_band: "25_34", relationship_preference: null });
+
+    assert.deepEqual(requestBody, {
+      age_band: "25_34",
+      relationship_preference: "no_preference",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("feed query string", async (suite) => {
