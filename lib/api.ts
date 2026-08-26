@@ -375,7 +375,11 @@ export function createGuestSession() {
 export function updateGuestProfile(profile: Pick<GuestProfile, "age_band" | "relationship_preference">) {
   return request<AuthContext>("/auth/guest/profile", {
     method: "PATCH",
-    body: JSON.stringify(profile),
+    body: JSON.stringify({
+      ...profile,
+      // The choice is optional in the UI; the API represents an empty choice explicitly.
+      relationship_preference: profile.relationship_preference ?? "no_preference",
+    }),
   });
 }
 
