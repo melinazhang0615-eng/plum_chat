@@ -1,0 +1,192 @@
+<meta charset="utf-8">
+<title>Memory 弹窗优化对照</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1560px; padding: 44px 48px 40px;
+    background: #0e0809;
+    color: #fff;
+    font: 400 14px/1.5 "Inter", "PingFang SC", "Helvetica Neue", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .head h1 { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .head span { color: rgba(255,255,255,.4); font-size: 13px; }
+  .head em { margin-left: auto; color: rgba(255,255,255,.3); font-size: 12px; font-style: normal; }
+  .rule { height: 1px; margin: 18px 0 26px; background: linear-gradient(90deg, rgba(255,255,255,.16), transparent); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; }
+  .col > .tag { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+  .tag.before { color: #ffb3b8; background: rgba(229,72,77,.14); border: 1px solid rgba(229,72,77,.32); }
+  .tag.after  { color: #d9c0ff; background: rgba(171,137,246,.15); border: 1px solid rgba(198,150,255,.36); }
+
+  /* ---------- shared popover chrome ---------- */
+  .pop {
+    position: relative; width: 100%;
+    border: 1px solid rgba(255,255,255,.16); border-radius: 20px;
+    background: #1b1215;
+    box-shadow: 0 26px 70px rgba(0,0,0,.5);
+    padding: 12px;
+  }
+  .pop > header { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px 13px; border-bottom: 1px solid rgba(255,255,255,.09); }
+  .pop > header b { font-size: 17px; font-weight: 700; }
+  .x { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; color: rgba(255,255,255,.5); font-size: 17px; }
+
+  .sec-title { display: flex; align-items: center; gap: 10px; }
+  .sec-title span { font-size: 16px; font-weight: 750; }
+  .sec-sub { margin-top: 6px; color: rgba(255,255,255,.46); font-size: 12px; line-height: 1.45; }
+
+  .free { padding: 3px 9px; border-radius: 999px; background: #e5c8ff; color: #2b1831; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+  .count { min-width: 22px; height: 22px; display: grid; place-items: center; padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.09); color: rgba(255,255,255,.6); font-size: 11px; }
+
+  .perm { margin-top: 12px; padding: 18px; border: 1px solid rgba(226,196,255,.3); border-radius: 15px; background: linear-gradient(145deg, rgba(130,78,151,.26), rgba(255,255,255,.045)); }
+  .perm-body { display: flex; align-items: flex-start; gap: 8px; margin-top: 15px; }
+  .perm-body p { flex: 1; padding: 14px 15px; border-radius: 11px; background: rgba(16,8,14,.3); color: rgba(255,255,255,.92); font-size: 14px; line-height: 1.6; }
+  .pencil { width: 30px; height: 30px; flex: none; display: grid; place-items: center; margin-top: 5px; border-radius: 8px; color: rgba(255,255,255,.5); }
+  .pencil svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+  .saved { padding: 16px 10px 0; }
+  .saved-list { display: flex; flex-direction: column; gap: 9px; margin-top: 12px; }
+  .saved-list p { padding: 14px 15px; border-radius: 11px; background: rgba(255,255,255,.055); color: rgba(255,255,255,.84); font-size: 13.5px; line-height: 1.6; }
+
+  /* ---------- BEFORE-only ---------- */
+  .clip { position: relative; height: 268px; overflow: hidden; }
+  .clip::after { content: ""; position: absolute; inset: auto 0 0 0; height: 1px; background: rgba(255,255,255,.16); }
+
+  /* ---------- AFTER-only ---------- */
+  .lede { padding: 12px 12px 0; color: rgba(255,255,255,.5); font-size: 12.5px; line-height: 1.5; }
+  .lede b { color: rgba(255,255,255,.78); font-weight: 600; }
+  .perm2 { margin-top: 12px; padding: 15px 16px; border: 1px solid rgba(226,196,255,.28); border-radius: 15px; background: linear-gradient(145deg, rgba(130,78,151,.2), rgba(255,255,255,.035)); }
+  .perm2-top { display: flex; align-items: center; gap: 10px; }
+  .perm2-top span { font-size: 15px; font-weight: 750; }
+  .slot { margin-left: auto; color: rgba(255,255,255,.42); font-size: 11.5px; }
+  .edit-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid rgba(226,196,255,.4); border-radius: 999px; color: #e8d4ff; font-size: 12px; font-weight: 650; }
+  .edit-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .perm2 p { margin-top: 12px; padding: 13px 14px; border-radius: 11px; background: rgba(16,8,14,.32); font-size: 14px; line-height: 1.6; }
+  .perm2-foot { display: flex; align-items: center; gap: 8px; margin-top: 11px; color: rgba(255,255,255,.4); font-size: 11.5px; }
+
+  .saved2 { padding: 18px 10px 4px; }
+  .item { position: relative; padding: 13px 15px; border-radius: 11px; background: rgba(255,255,255,.055); }
+  .item + .item { margin-top: 9px; }
+  .item .meta { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; color: rgba(255,255,255,.4); font-size: 11px; }
+  .item .meta i { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.28); font-style: normal; }
+  .item .meta .trash { margin-left: auto; color: rgba(255,255,255,.34); }
+  .item .meta .trash svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+  .item p { color: rgba(255,255,255,.84); font-size: 13.5px; line-height: 1.58; }
+  .fade { position: relative; height: 226px; overflow: hidden; }
+  .fade::after { content: ""; position: absolute; inset: auto 0 0 0; height: 46px; background: linear-gradient(180deg, transparent, #1b1215); }
+  .bar { position: absolute; top: 4px; right: 2px; bottom: 46px; width: 4px; border-radius: 999px; background: rgba(255,255,255,.07); }
+  .bar i { position: absolute; top: 0; left: 0; width: 4px; height: 58%; border-radius: 999px; background: rgba(255,255,255,.3); }
+
+  /* ---------- callouts ---------- */
+  .pin { position: absolute; z-index: 3; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; font-size: 12.5px; font-weight: 800; }
+  .pin.b { background: #e5484d; color: #fff; box-shadow: 0 0 0 3px rgba(229,72,77,.22); }
+  .pin.a { background: #c69bff; color: #23112e; box-shadow: 0 0 0 3px rgba(198,155,255,.22); }
+
+  .legend { margin-top: 34px; }
+  .legend h2 { margin-bottom: 14px; font-size: 15px; font-weight: 700; color: rgba(255,255,255,.85); }
+  .legend ol { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px; }
+  .legend li { display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 12px; align-items: start; }
+  .legend .n { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: #c69bff; color: #23112e; font-size: 12.5px; font-weight: 800; }
+  .legend b { display: block; font-size: 13.5px; font-weight: 650; }
+  .legend small { display: block; margin-top: 3px; color: rgba(255,255,255,.45); font-size: 12px; line-height: 1.5; }
+  .legend em { color: #ffb3b8; font-style: normal; }
+</style>
+
+<div class="head">
+  <h1>Memory 弹窗</h1>
+  <span>改前 / 改后对照 · 仅 UI</span>
+  <em>Plum · 聊天页记忆面板</em>
+</div>
+<div class="rule"></div>
+
+<div class="cols">
+  <!-- ======================= BEFORE ======================= -->
+  <div class="col">
+    <div class="tag before">现状</div>
+    <div class="pop">
+      <div class="pin b" style="left:-11px; top:150px">1</div>
+      <div class="pin b" style="left:-11px; top:96px">2</div>
+      <div class="pin b" style="right:-11px; top:420px">3</div>
+      <div class="pin b" style="right:-11px; top:560px">4</div>
+      <header><b>Memory</b><div class="x">×</div></header>
+
+      <div class="perm">
+        <div class="sec-title"><span>Permanent Memory</span><i class="free">FREE</i></div>
+        <div class="sec-sub">Tell Colt what you want them to always remember.</div>
+        <div class="perm-body">
+          <p>She hates being called "kid" — it ends any good mood instantly.</p>
+          <div class="pencil"><svg viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/></svg></div>
+        </div>
+      </div>
+
+      <div class="saved">
+        <div class="sec-title"><span>Saved Memories</span><i class="count">6</i></div>
+        <div class="sec-sub">Moments saved from your conversations.</div>
+        <div class="clip">
+          <div class="saved-list">
+            <p>He leans back, still not done talking. "And another thing — that orange juice was mine the second you left it in there."</p>
+            <p>He leans back, still not done talking. "And another thing — that orange juice was mine the second you left it in there."</p>
+            <p>"Looking for this?" Colt sets your own cereal box down in front of you like he's done you an enormous favor. He's already opened the fridge and is helping himself to the orange juice you specifically bought yesterday.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= AFTER ======================= -->
+  <div class="col">
+    <div class="tag after">优化后</div>
+    <div class="pop">
+      <div class="pin a" style="left:-11px; top:66px">1</div>
+      <div class="pin a" style="left:-11px; top:132px">2</div>
+      <div class="pin a" style="right:-11px; top:250px">3</div>
+      <div class="pin a" style="right:-11px; top:372px">4</div>
+      <div class="pin a" style="right:-11px; top:560px">5</div>
+      <header><b>Memory</b><div class="x">×</div></header>
+      <div class="lede">这里的内容会作为<b>长期事实</b>参与 Colt 之后的每一次回复。</div>
+
+      <div class="perm2">
+        <div class="perm2-top">
+          <span>Permanent Memory</span>
+          <i class="slot">1 / 1 已使用</i>
+          <div class="edit-btn"><svg viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/></svg>编辑</div>
+        </div>
+        <p>She hates being called "kid" — it ends any good mood instantly.</p>
+        <div class="perm2-foot">你写的 · 始终生效 · 62 / 2000</div>
+      </div>
+
+      <div class="saved2">
+        <div class="sec-title"><span>Saved Memories</span><i class="count">6</i></div>
+        <div class="sec-sub">长按 AI 回复保存的片段，按时间倒序。</div>
+        <div class="fade">
+          <div class="bar"><i></i></div>
+          <div class="item">
+            <div class="meta">今天 10:06 <i></i> 第 12 轮 <span class="trash"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12"/></svg></span></div>
+            <p>He leans back, still not done talking. "And another thing — that orange juice was mine the second you left it in there."</p>
+          </div>
+          <div class="item">
+            <div class="meta">今天 10:02 <i></i> 第 9 轮</div>
+            <p>"Looking for this?" Colt sets your own cereal box down in front of you like he's done you an enormous favor.</p>
+          </div>
+          <div class="item">
+            <div class="meta">昨天 21:48 <i></i> 第 4 轮</div>
+            <p>Annoyed again. Good — annoyed means she's comfortable.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <h2>改了什么</h2>
+  <ol>
+    <li><span class="n">1</span><div><b>补一句「记忆会怎么被用」</b><small>现状进来只有两个分区标题，用户不知道写了有什么用。顶部一句话说清它参与每次回复。</small></div></li>
+    <li><span class="n">2</span><div><b>FREE 徽章 → 容量口径</b><small><em>现状：</em>孤零零一个 FREE，免费对应什么？没有上下文，像个价格标签。改成「1 / 1 已使用」，直接回答"我还能写几条"。</small></div></li>
+    <li><span class="n">3</span><div><b>裸铅笔图标 → 带文字的编辑按钮</b><small><em>现状：</em>30px 的低对比图标挂在 120px 高的卡片右上角，不 hover 上去没有任何反馈。改成有边框有文字的按钮。</small></div></li>
+    <li><span class="n">4</span><div><b>每条保存记忆补时间与来源</b><small><em>现状：</em>六条内容高度雷同，无法分辨谁是谁、什么时候存的，也删不掉。补「时间 · 第几轮」，hover 出删除。</small></div></li>
+    <li><span class="n">5</span><div><b>底部硬切 → 渐隐 + 滚动条</b><small><em>现状：</em>最后一条被弹窗边缘齐平切断在句子中间，像渲染坏了。改为底部渐隐并显示滚动条，明确「还有更多」。</small></div></li>
+    <li><span class="n">6</span><div><b>两个区块的权重拉开</b><small>永久记忆是你写的、唯一、始终生效；保存记忆是自动攒的、多条、只读。现状两块视觉权重接近；改后永久记忆压扁成一屏可读的卡片，把高度让给列表。</small></div></li>
+  </ol>
+</div>
