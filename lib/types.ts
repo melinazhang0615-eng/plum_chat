@@ -48,10 +48,33 @@ export type AuthActor =
   | { kind: "guest"; user: { id: string; display_name: null }; profile_complete: boolean; profile?: GuestProfile }
   | { kind: "member"; user: AuthUser; profile_complete: boolean; profile?: GuestProfile | null };
 
+/** Where a stored value came from, in the backend's own precedence order. */
+export type PreferenceSource = "explicit" | "client_initial" | "product_default";
+
+/**
+ * The server's view of this actor's language and timezone.
+ *
+ * `timezone` is here so the client can tell whether the browser's zone still needs to be
+ * sent: the server has no way to derive it (see `lib/timezone.ts`), and re-sending an
+ * unchanged value on every page load would be a write per visit. The timezone fields are
+ * optional because a backend without the daily-memory columns simply omits them.
+ */
+export type PlumLanguageContext = {
+  catalog_version: string;
+  language_key: string;
+  locale: string;
+  ui_locale: string;
+  preference_revision: number | null;
+  source: string;
+  timezone?: string;
+  timezone_source?: PreferenceSource;
+};
+
 export type AuthContext = {
   status: "ok";
   actor: AuthActor;
   capabilities: PlumCapabilities;
+  language?: PlumLanguageContext;
   guest_quota: GuestQuota | null;
   wallet: Wallet | null;
   session_expires_at: string | null;
