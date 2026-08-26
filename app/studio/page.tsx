@@ -6,13 +6,13 @@ import { Brand } from "@/components/brand";
 import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CopyIcon, CreateIcon, DeleteIcon, EditIcon, PersonaIcon, SearchIcon, ShareIcon, TranslationIcon } from "@/components/icons";
-import { ApiError, deleteCreationWork, getBootstrap, listCreationWorks, logout } from "@/lib/api";
+import { ApiError, deleteCreationWork, deletePersona, getBootstrap, listCreationWorks, listPersonas, logout, setDefaultPersona } from "@/lib/api";
 import type { CreationWork } from "@/lib/api";
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { shareCharacter } from "@/lib/character-share";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins } from "@/lib/format";
-import type { AuthUser } from "@/lib/types";
+import type { AuthUser, Persona } from "@/lib/types";
 import styles from "./studio.module.css";
 
 type StudioView = "all" | "drafts" | "published";
@@ -34,10 +34,14 @@ function statusLabel(work: CreationWork) {
 export default function StudioPage() {
   const router = useRouter();
   const [items, setItems] = useState<CreationWork[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [personaError, setPersonaError] = useState("");
   const [menuWorkId, setMenuWorkId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CreationWork | null>(null);
+  const [personaDeleteTarget, setPersonaDeleteTarget] = useState<Persona | null>(null);
+  const [personaBusyId, setPersonaBusyId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [section, setSection] = useState<StudioSection>("characters");
   const [view, setView] = useState<StudioView>("all");
@@ -53,14 +57,21 @@ export default function StudioPage() {
   const [shareNotice, setShareNotice] = useState("");
 
   async function load() {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setPersonaError("");
     try {
       const bootstrap = await getBootstrap();
       setUser(bootstrap.user);
       setProfileName(window.localStorage.getItem(PROFILE_NAME_KEY) || bootstrap.user.display_name);
       setBalance(bootstrap.wallet.balance);
-      const result = await listCreationWorks();
-      setItems(result.items);
+      const [worksResult, personasResult] = await Promise.allSettled([listCreationWorks(), listPersonas()]);
+      const unauthorized = [worksResult, personasResult].find(
+        (result) => result.status === "rejected" && result.reason instanceof ApiError && result.reason.status === 401,
+      );
+      if (unauthorized?.status === "rejected") throw unauthorized.reason;
+      if (worksResult.status === "fulfilled") setItems(worksResult.value.items);
+      else setError(errorMessage(worksResult.reason, { fallback: "Could not load your characters. Try again." }));
+      if (personasResult.status === "fulfilled") setPersonas(personasResult.value.items);
+      else setPersonaError(errorMessage(personasResult.reason, { fallback: "Could not load your Personas. Try again." }));
     } catch (loadError) {
       if (loadError instanceof ApiError && loadError.status === 401) {
         router.replace("/?login=1");
@@ -122,6 +133,39 @@ export default function StudioPage() {
       setError(errorMessage(deleteError, { fallback: "Could not delete this Studio item. Try again." }));
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function makePersonaDefault(persona: Persona) {
+    if (persona.is_default || personaBusyId) return;
+    setPersonaBusyId(persona.id);
+    setPersonaError("");
+    try {
+      const { persona: selected } = await setDefaultPersona(persona.id);
+      setPersonas((current) => current
+        .map((item) => ({ ...item, is_default: item.id === selected.id }))
+        .sort((left, right) => Number(right.is_default) - Number(left.is_default)));
+    } catch (personaError) {
+      setPersonaError(errorMessage(personaError, { fallback: "Could not change your default Persona. Try again." }));
+    } finally {
+      setPersonaBusyId(null);
+    }
+  }
+
+  async function confirmPersonaDelete() {
+    if (!personaDeleteTarget || personaBusyId) return;
+    const personaId = personaDeleteTarget.id;
+    setPersonaBusyId(personaId);
+    setPersonaError("");
+    try {
+      await deletePersona(personaId);
+      setPersonas((current) => current.filter((item) => item.id !== personaId));
+      setPersonaDeleteTarget(null);
+    } catch (personaError) {
+      setPersonaDeleteTarget(null);
+      setPersonaError(errorMessage(personaError, { fallback: "Could not delete this Persona. Try again." }));
+    } finally {
+      setPersonaBusyId(null);
     }
   }
 
@@ -195,12 +239,13 @@ export default function StudioPage() {
     <nav className={styles.sections} aria-label="My Studio">
       {STUDIO_SECTIONS.map((item) => <button key={item.id} className={section === item.id ? styles.active : ""} onClick={() => selectSection(item.id)}>{item.label}</button>)}
     </nav>
+    {section === "characters" && error && <div className={styles.error}>{error}<button onClick={() => void load()}>Retry</button></div>}
+    {section === "personas" && personaError && <div className={styles.error}>{personaError}<button onClick={() => void load()}>Retry</button></div>}
     {section === "characters" ? <><nav className={styles.views} aria-label="Character sections">
       <button className={view === "all" ? styles.active : ""} onClick={() => selectView("all")}><span>All works</span><b>{items.length}</b></button>
       <button className={view === "drafts" ? styles.active : ""} onClick={() => selectView("drafts")}><span>Draft Box</span><b>{draftItems.length}</b></button>
       <button className={view === "published" ? styles.active : ""} onClick={() => selectView("published")}><span>Published</span><b>{publishedItems.length}</b></button>
     </nav>
-    {error && <div className={styles.error}>{error}<button onClick={() => void load()}>Retry</button></div>}
     {loading ? <div className={styles.empty}>Loading Studio…</div> : visibleItems.length === 0 ? <div className={styles.empty}><h2>{view === "drafts" ? "Draft Box is empty" : view === "published" ? "No published characters yet" : "Your Studio is empty"}</h2><p>{view === "drafts" ? "Save a draft or edit a published character to see it here." : view === "published" ? "Publish an approved character to see it here." : "Save a Creation draft to see it here."}</p><button onClick={() => router.push("/create")}>Create character</button></div> : <section className={styles.grid}>
       {visibleItems.map((work) => <article className={styles.card} key={work.work_id}>
         <button className={styles.cover} onClick={() => openWork(work)} disabled={work.moderation_status === "pending_review" && !work.published_character_id} aria-label={`${work.content.display_name || "Untitled character"} · ${statusLabel(work)}`}>
@@ -213,13 +258,32 @@ export default function StudioPage() {
           {menuWorkId === work.work_id && <div><button onClick={() => router.push(`/create?work_id=${encodeURIComponent(work.work_id)}`)}><EditIcon />Edit</button>{work.published_character_id && <button onClick={() => { setMenuWorkId(null); void shareWork(work); }}><ShareIcon />Share</button>}<button className={styles.deleteAction} onClick={() => { setMenuWorkId(null); setDeleteTarget(work); }}><DeleteIcon />Delete</button></div>}
         </div>
       </article>)}
-    </section>}</> : <section className={styles.personas}>
-      <PersonaIcon />
-      <h2>Your personas</h2>
-      <p>Choose who you are in your stories.</p>
-      <button onClick={() => router.push(`/personas/new?returnTo=${encodeURIComponent("/studio?section=personas")}`)}>Create Persona</button>
+    </section>}</> : loading ? <div className={styles.empty}>Loading Personas…</div> : <section className={styles.personaSection}>
+      <header className={styles.personaHeader}>
+        <div><h2>Your Personas</h2><p>Choose who you are when you step into a story.</p></div>
+        <button onClick={() => router.push(`/personas/new?returnTo=${encodeURIComponent("/studio?section=personas")}`)}>Create Persona</button>
+      </header>
+      {personas.length === 0 ? <div className={styles.personas}>
+        <PersonaIcon />
+        <h2>Create your first Persona</h2>
+        <p>Give characters a name and a little context about who you are.</p>
+        <button onClick={() => router.push(`/personas/new?returnTo=${encodeURIComponent("/studio?section=personas")}`)}>Create Persona</button>
+      </div> : <div className={styles.personaGrid}>{personas.map((persona) => <article className={styles.personaCard} key={persona.id}>
+        <div className={styles.personaAvatar}>{persona.display_name.slice(0, 1).toUpperCase()}</div>
+        <div className={styles.personaDetails}>
+          <div><h3>{persona.display_name}</h3>{persona.is_default && <span>Default</span>}</div>
+          <p>{persona.description || "No description yet."}</p>
+          {persona.is_locked && <small>Used in a story · identity locked</small>}
+        </div>
+        <div className={styles.personaActions}>
+          {!persona.is_default && <button disabled={personaBusyId !== null} onClick={() => void makePersonaDefault(persona)}>{personaBusyId === persona.id ? "Saving…" : "Make default"}</button>}
+          <button onClick={() => router.push(`/personas/${encodeURIComponent(persona.id)}/edit?returnTo=${encodeURIComponent("/studio?section=personas")}`)}><EditIcon />{persona.is_locked ? "View" : "Edit"}</button>
+          <button className={styles.personaDelete} disabled={persona.is_default || persona.is_locked || personaBusyId !== null} title={persona.is_default ? "Choose another default Persona first" : persona.is_locked ? "A Persona used in a story cannot be deleted" : "Delete Persona"} onClick={() => setPersonaDeleteTarget(persona)}><DeleteIcon />Delete</button>
+        </div>
+      </article>)}</div>}
     </section>}
     {shareNotice && <div className={styles.shareNotice} role="status">{shareNotice}</div>}
     {deleteTarget && <div className={styles.backdrop} onMouseDown={() => !deleting && setDeleteTarget(null)}><section role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span>DELETE CHARACTER</span><h2>Delete {deleteTarget.content.display_name || "this draft"}?</h2><p>{deleteTarget.moderation_status === "approved" ? "It will be removed from public discovery and no new chats can be started. Existing conversation history is retained." : "This draft will be removed from My Studio."}</p><footer><button disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</button><button disabled={deleting} className={styles.confirmDelete} onClick={() => void confirmDelete()}>{deleting ? "Deleting…" : "Delete"}</button></footer></section></div>}
+    {personaDeleteTarget && <div className={styles.backdrop} onMouseDown={() => !personaBusyId && setPersonaDeleteTarget(null)}><section role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span>DELETE PERSONA</span><h2>Delete {personaDeleteTarget.display_name}?</h2><p>This removes the Persona from My Studio. This cannot be undone.</p><footer><button disabled={Boolean(personaBusyId)} onClick={() => setPersonaDeleteTarget(null)}>Cancel</button><button disabled={Boolean(personaBusyId)} className={styles.confirmDelete} onClick={() => void confirmPersonaDelete()}>{personaBusyId ? "Deleting…" : "Delete"}</button></footer></section></div>}
   </main>;
 }

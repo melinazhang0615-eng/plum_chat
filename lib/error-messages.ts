@@ -71,6 +71,12 @@ const CODE_MESSAGES: Record<string, string> = {
   character_tag_invalid: "One or more selected Tags are no longer available. Refresh the Tag list and try again.",
   creator_media_not_claimable: "This portrait can no longer be used. Upload it again before creating the character.",
 
+  // Personas.
+  persona_not_found: "This Persona is no longer available.",
+  persona_locked: "This Persona is already part of a story, so its identity can no longer be edited.",
+  persona_in_use: "This Persona is part of an existing story and cannot be deleted.",
+  default_persona_cannot_be_deleted: "Choose another default Persona before deleting this one.",
+
   // Feed filters. These mean the client sent a value the API rejects, i.e. our bug — but the
   // user still needs a way out of the state they are stuck in.
   invalid_gender: "That filter is not available. Clear the filters and try again.",

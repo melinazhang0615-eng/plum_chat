@@ -1,83 +1,81 @@
 # Plum Persona V1 产品决策与上线复核说明
 
-> 状态：前端体验原型已完成，Persona CRUD、会话切换与记忆隔离尚未接入后端。
+> 状态：前端入口、真实 Persona CRUD，以及按 Persona 创建或恢复独立故事的切换链路已完成。
 > 本文记录当前准备采用的 V1 方案，同时明确标记需要服务端同事在开发和上线前复核的设计点；它不是不可修改的永久约束。
 
 ## 1. 当前前端范围
 
 - My Studio 使用可扩展的一级导航，目前包含 `Characters` 和 `Personas`。
-- 聊天页 Role Card 面板展示 `Recommended Persona`、当前 Persona 和 `Add Persona`。
+- 聊天页 Role Card 面板展示当前 Persona、其他可用 Persona、创建和管理入口。
 - My Studio 与聊天页共用 `/personas/new` 创建入口。
 - 创建页当前只收集 Name、Description 和默认 Persona 意图。
-- 前端不使用 `localStorage` 伪造 Persona 持久化；后端 API 接入前不会宣称创建成功。
+- 前端通过 owner-scoped Persona API 展示、创建、编辑、软删除和设置默认项，不使用
+  `localStorage` 伪造 Persona 持久化。
+- 已用于 Connection 的 Persona 会永久锁定身份字段；V1 禁止删除，避免现有故事失去 Prompt 身份。
 
-## 2. 当前建议的切换语义
+## 2. V1 切换语义
 
-V1 暂定允许用户在**同一个 Conversation 内即时切换 Persona**：
+V1 选择另一个 Persona 时，为该 `Persona × Character` **创建或恢复独立 Connection 和
+Conversation**，随后进入该 Persona 自己的故事：
 
-- 不创建新 Conversation，不重置用户可见的消息历史。
-- 当前场景与关系进度继续保留。
-- 切换后名称、头像和身份描述立即使用新 Persona。
-- UI 展示轻量事件：`You switched to {persona_name}`，并提示 `Now chatting as {persona_name}`。
-- `Restart Story` 仍是独立操作，不能与 Persona 切换混为一谈。
+- 第一次选择该 Persona 时创建新故事；再次选择时恢复其已有故事和历史。
+- 原 Persona 的 Conversation、关系、记忆、Pins 和 Runtime Context 保持原样，不迁移也不删除。
+- 不在一条 Conversation 上覆盖 `persona_id`，历史消息不需要被重新解释或改写。
+- `Restart Story` 只重开当前 Persona 的故事，仍是独立操作。
 
-采用这一方案是因为已观察的同类产品都在原聊天中持续对话；强制创建新故事不符合用户对“切换身份卡”的直接预期。
+同一 Conversation 即时换头像和名字的体验仍可作为后续方案研究，但它需要消息 Persona 快照、
+结构化切换事件、Persona 级记忆隔离及 Prompt Resolver 改造。当前后端以 Connection 作为
+`Locked Persona × Scenario` 的关系和记忆边界，因此 V1 选择安全、可追溯且不会串线的独立故事方案。
 
-## 3. 上线前必须满足的数据边界
+## 3. V1 数据边界
 
-直接切换不能只修改一段前端文案或覆盖 Conversation 上的一个字段。服务端至少需要保证：
+1. Persona 列表、详情、CRUD 和故事入口全部按 `platform_user_id` 校验所有权。
+2. Connection 固定引用一个锁定的 Persona；Persona 首次建立 Connection 后身份字段不可修改。
+3. Connection 分别拥有关系状态、跨 Conversation 记忆和 Runtime Binding。
+4. Conversation、消息、Pins、剧情状态和局部记忆只属于其 Connection。
+5. 再次选择同一 Persona 与 Character 时恢复已有 active Conversation，不重复创建。
+6. 选择另一个 Persona 时不得读取或复制原 Connection 的关系、记忆、消息或 Runtime Context。
 
-1. Conversation 记录当前 `active_persona_id`。
-2. 每条用户消息或 turn 保存发送当时的 `persona_id` 快照。
-3. 历史消息保留发送时的 Persona 名称和头像，不因之后切换而整体重写。
-4. Prompt 只把当前 Persona 的身份资料作为当前用户身份注入。
-5. Persona 切换以结构化事件进入上下文，模型能识别身份边界。
-6. 从聊天中提取的用户身份事实或长期记忆必须携带 `persona_id`，只向对应 Persona 回注。
-7. 切回旧 Persona 时恢复该 Persona 自己的身份记忆，不能混入其他 Persona 的职业、年龄、背景或称呼。
-8. 所有列表、详情、切换和写操作继续按 `platform_user_id` 做所有权校验。
+## 4. 后续连续切换方案的复核点
 
-如果上线版本无法满足第 2、4、6、7 项，应该关闭聊天内切换，只允许新 Conversation 选择 Persona；不能以身份记忆串线作为可接受降级。
+如果未来希望像部分竞品一样在同一可见聊天里即时换 Persona，必须先独立设计并复核：
 
-## 4. 需要重点复核的 Connection 设计
+- 每条消息与 Turn 的 Persona 快照及历史头像展示；
+- 切换事件的摘要、重放、Debug Console 和审计语义；
+- Persona 身份记忆、Connection 关系记忆与 Conversation 剧情记忆的分层；
+- Prompt Resolver 如何清除旧 Persona 身份，同时保留允许延续的剧情；
+- relationship level 是否跨 Persona 延续，以及这是否符合用户预期。
 
-现有服务端模型把 Persona、Connection、关系和记忆紧密关联；而“同一 Conversation 内切换 Persona、场景和关系继续”会改变这一假设。服务端实现前必须明确：
-
-- Connection 继续代表角色关系，还是代表“角色 × Persona”的关系？
-- 切换 Persona 后，relationship level 是否继续沿用当前 Conversation？
-- Persona 级长期记忆与 Conversation 级剧情记忆如何分层？
-- Prompt Resolver 如何避免旧 Persona 的身份摘要继续生效？
-- Persona 切换事件是否需要参与摘要、重放、Debug Console 和审计？
-
-当前产品倾向是：**剧情与关系属于 Conversation，用户身份事实属于 Persona**。如果现有 Connection 模型无法稳定表达这一点，应先调整领域模型，再开放切换接口。
+在这些问题冻结并完成迁移前，不得把 V1 API 改成原 Conversation 覆盖 Persona。
 
 ## 5. 编辑、删除与默认项的暂定规则
 
-- 默认 Persona 只影响新 Conversation 的初始选择，不回写已有 Conversation。
-- 已发送消息保存 Persona 快照，之后编辑 Persona 不得改写历史展示。
-- 已参与 Conversation 的 Persona 不应硬删除；优先归档。
+- 默认 Persona 只影响没有显式选择 Persona 的新故事入口，不回写已有 Connection。
+- 已参与 Connection 的 Persona 身份锁定且不可删除；未使用 Persona 使用软删除。
 - 删除默认 Persona 前必须先设置另一个默认项。
-- 是否锁定已使用 Persona、或允许编辑后生成新版本，仍需在 CRUD API 设计时最终确认。
+- 锁定 Persona 仍可设为默认项；V1 不提供身份版本或“复制并编辑”入口。
 
 ## 6. 隐私与后续公开能力
 
 - V1 Persona 默认 `private`，角色创作者与其他用户不可见。
-- 后续会支持用户修改可见性，因此数据库和 API 应使用可扩展的 `visibility` 枚举，而不是只用 `is_private` 布尔值。
+- V1 直接通过 owner-scoped API 强制私有，不提前暴露无效的可见性开关；后续开放可见性时使用
+  可扩展的 `visibility` 枚举，而不是 `is_private` 布尔值。
 - 首期至少预留 `private`、`public`；开放 Public 前需另行确认公开字段、审核、搜索展示和撤回后的缓存处理。
 
 ## 7. 上线验收与同事复核清单
 
-- [ ] 在 Persona A / Persona B 间反复切换，Conversation ID 和可见历史不变。
-- [ ] 切换后的下一轮 Prompt 只使用当前 Persona。
-- [ ] 历史用户消息仍显示发送时的 Persona。
-- [ ] Persona A 的身份事实不会在 Persona B 下被召回。
-- [ ] 切回 Persona A 后能恢复 A 自己的身份记忆。
-- [ ] 切换事件在刷新、历史恢复和摘要后仍然成立。
+- [ ] 首次选择 Persona B 时创建与 Persona A 不同的 Connection 和 Conversation。
+- [ ] 再次选择 Persona A / B 时分别恢复各自原有的 Conversation 和历史。
+- [ ] Persona B 的 Prompt、关系、记忆和 Pins 不包含 Persona A 的私有上下文。
+- [ ] 刷新页面后当前 Role Card 与 Connection 绑定的 Persona 一致。
 - [ ] 未授权用户不能读取、修改或选择他人的 Persona。
-- [ ] 默认 Persona 只影响新 Conversation。
-- [ ] 服务端同事已复核 Connection、关系进度和长期记忆的归属模型。
+- [ ] 默认 Persona 只影响未显式选择 Persona 的故事入口。
+- [ ] 桌面和移动端的创建、编辑、切换、失败重试与加载状态一致。
 
 ## 8. 上线说明必须明确的已知决策
 
 上线记录中应单列以下内容：
 
-> Persona V1 采用同一 Conversation 内即时切换。剧情与关系延续；当前身份 Prompt 立即替换；消息保存 Persona 快照；身份记忆按 Persona 隔离。该设计参考当前竞品的连续切换体验，仍需在真实长对话数据下复核 Connection 与长期记忆模型。若出现身份记忆串线，应立即关闭聊天内切换并回退为新 Conversation 选择 Persona。
+> Persona V1 为每个 Persona 建立或恢复独立故事。切换不会覆盖原 Conversation，也不会复制关系、
+> 消息、Pins、记忆或 Runtime Context；切回原 Persona 会恢复它自己的故事。未来若研究同一
+> Conversation 连续换 Persona，必须先完成消息快照、记忆隔离和 Prompt Resolver 设计，不能直接覆盖身份字段。

@@ -9,6 +9,19 @@ export type AuthUser = {
   display_name: string;
 };
 
+export type Persona = {
+  id: string;
+  display_name: string;
+  avatar_ref: string | null;
+  avatar_media_id: string | null;
+  description: string;
+  is_default: boolean;
+  is_locked: boolean;
+  derived_from_persona_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type GuestProfile = {
   age_band: "35_plus" | "25_34" | "18_24" | "14_17" | "13_or_younger" | "not_collected" | "above_26" | "24_26" | "21_23" | "18_20" | "0_13";
   pronouns?: "she_her" | "he_him" | "they_them" | "other" | null;
@@ -111,6 +124,9 @@ export type FeedCharacter = Character & {
 export type Conversation = {
   id: string;
   character_id: string;
+  /** Optional while the conversation response rolls out behind the Persona CRUD API. */
+  persona_id?: string;
+  persona?: Pick<Persona, "id" | "display_name" | "avatar_ref">;
   model_profile: string;
   runtime_session_id: number;
   updated_at?: string;

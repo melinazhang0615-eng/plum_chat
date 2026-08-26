@@ -8,13 +8,13 @@ import { AccountDropdown } from "@/components/account-dropdown";
 import { CommunityLink } from "@/components/community-link";
 import { CloseIcon, CreateIcon, SearchIcon, TranslationIcon } from "@/components/icons";
 import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum-auth";
-import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
+import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, listPersonas, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
 import { CHAT_LABELS, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, messageStatusLabel } from "@/lib/copy";
 import { errorMessage, messageForCode } from "@/lib/error-messages";
 import { AUDIENCE_ONBOARDING_SEEN_KEY, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
-import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
+import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile, Persona } from "@/lib/types";
 
 const modelName = (model?: ModelProfile | null) => model ? (model.display_name || model.profile) : undefined;
 const modelPrice = (model: ModelProfile) => model.coin_cost === 0
@@ -73,31 +73,58 @@ function PencilIcon() {
 
 function PersonaPicker({
   roleCard,
+  personas,
   guest,
+  loading,
+  error,
+  switchingId,
   onManage,
   onAdd,
+  onSelect,
+  onRetry,
 }: {
   roleCard: CharacterExperience["conversation_tools"]["role_card"];
+  personas: Persona[];
   guest: boolean;
-  onManage: () => void;
+  loading: boolean;
+  error: string;
+  switchingId: string | null;
+  onManage: (personaId?: string) => void;
   onAdd: () => void;
+  onSelect: (persona: Persona) => void;
+  onRetry: () => void;
 }) {
+  const otherPersonas = personas.filter((persona) => persona.id !== roleCard?.id);
   return <div className="persona-picker">
     <section>
-      <h3>Recommended Persona</h3>
+      <h3>Current Persona</h3>
       {roleCard ? <article className="persona-option selected">
         <span className="persona-option-avatar">{roleCard.display_name.slice(0, 1).toUpperCase()}</span>
         <div><strong>{roleCard.display_name}</strong><small>{roleCard.description}</small></div>
         <i aria-label="Selected">✓</i>
-        <button onClick={onManage} aria-label="Edit Persona"><PencilIcon /></button>
+        <button onClick={() => onManage(roleCard.id)} aria-label="Edit Persona"><PencilIcon /></button>
       </article> : <div className="persona-option-empty">No Persona selected</div>}
     </section>
     <section>
       <h3>My Personas</h3>
+      {loading && <div className="persona-option-empty">Loading your Personas…</div>}
+      {!loading && error && <div className="persona-option-empty persona-option-error"><span>{error}</span><button onClick={onRetry}>Try again</button></div>}
+      {!loading && !error && otherPersonas.map((persona) => <button
+        key={persona.id}
+        className="persona-switch-option"
+        disabled={switchingId !== null}
+        onClick={() => onSelect(persona)}
+      >
+        <span className="persona-option-avatar">{persona.display_name.slice(0, 1).toUpperCase()}</span>
+        <span><strong>{persona.display_name}</strong><small>{persona.description || "No description yet."}</small></span>
+        <i>{switchingId === persona.id ? "Opening…" : "Switch"}</i>
+      </button>)}
+      {!guest && !loading && !error && otherPersonas.length === 0 && <div className="persona-option-empty">No other Personas yet.</div>}
       <button className="persona-add" onClick={onAdd}>
         <span aria-hidden="true">＋</span>
         <div><strong>{guest ? "Sign in to add a Persona" : "Add Persona"}</strong><small>Create a new identity for your stories.</small></div>
       </button>
+      {!guest && <button className="persona-manage" onClick={() => onManage()}>Manage Personas</button>}
     </section>
   </div>;
 }
@@ -216,6 +243,10 @@ function ChatContent() {
   const [pendingModel, setPendingModel] = useState<ModelProfile["profile"] | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
+  const [personas, setPersonas] = useState<Persona[]>([]);
+  const [personasLoading, setPersonasLoading] = useState(false);
+  const [personasError, setPersonasError] = useState("");
+  const [switchingPersonaId, setSwitchingPersonaId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
@@ -289,6 +320,20 @@ function ChatContent() {
   const canStopGeneration = generating && chatStreamingEnabled;
   const sending = generating || restarting;
 
+  async function loadPersonas() {
+    setPersonasLoading(true);
+    setPersonasError("");
+    try {
+      const result = await listPersonas();
+      setPersonas(result.items);
+    } catch (loadError) {
+      if (redirectIfUnauthorized(loadError)) return;
+      setPersonasError(errorMessage(loadError, { fallback: "Could not load your Personas. Try again." }));
+    } finally {
+      setPersonasLoading(false);
+    }
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -311,6 +356,12 @@ function ChatContent() {
       setGuest(auth.actor.kind === "guest");
       setGuestQuota(detail.guest_quota ?? auth.guest_quota);
       setUser(auth.actor.kind === "member" ? auth.actor.user : null);
+      if (auth.actor.kind === "member") {
+        void loadPersonas();
+      } else {
+        setPersonas([]);
+        setPersonasError("");
+      }
       setHistory(conversationHistory.items);
       setExperience(detail.experience);
       setChatStreamingEnabled(auth.capabilities.chat_streaming === true);
@@ -584,7 +635,7 @@ function ChatContent() {
 
   /** Shared gate for both turn kinds: session, busy state and coin balance. */
   function turnBlocked() {
-    if (!conversation || sending || switchingModel || (!guest && !selectedModel)) return true;
+    if (!conversation || sending || switchingModel || switchingPersonaId || (!guest && !selectedModel)) return true;
     if (!guest && selectedModel && balance < selectedModel.coin_cost) {
       setError("金币余额不足，暂时无法发送这条消息。");
       return true;
@@ -650,7 +701,7 @@ function ChatContent() {
   // looking at, so it hides while scrolled away from the latest message.
   const lastMessage = messages[messages.length - 1];
   const lastMessageStatus = lastMessage ? getMessageStatus(lastMessage) : null;
-  const canContinue = !sending && !switchingModel && !showScrollLatest
+  const canContinue = !sending && !switchingModel && !switchingPersonaId && !showScrollLatest
     && lastMessage?.role === "assistant"
     && Boolean(lastMessage.content)
     && (lastMessageStatus === "completed" || lastMessageStatus === "cancelled");
@@ -672,11 +723,16 @@ function ChatContent() {
   const savedMemoryKeys = new Set(memories.map((pin) => pin.message_id).filter((id): id is string => Boolean(id)));
   const inspirationPrompts = experience.inspiration_prompts.map((prompt) => prompt.replace("{{character}}", displayName));
 
-  function openPersonaManager() {
+  function openPersonaManager(personaId?: string) {
     setComposerPanel(null);
     setMobileSheet(null);
     if (guest) {
       setSignInOpen(true);
+      return;
+    }
+    if (personaId) {
+      const returnTo = `${window.location.pathname}${window.location.search}`;
+      router.push(`/personas/${encodeURIComponent(personaId)}/edit?returnTo=${encodeURIComponent(returnTo)}`);
       return;
     }
     router.push("/studio?section=personas");
@@ -691,6 +747,33 @@ function ChatContent() {
     }
     const returnTo = `${window.location.pathname}${window.location.search}`;
     router.push(`/personas/new?returnTo=${encodeURIComponent(returnTo)}`);
+  }
+
+  async function switchPersona(persona: Persona) {
+    if (!conversation || guest || sending || switchingModel || switchingPersonaId) return;
+    if (conversationTools.role_card?.id === persona.id) {
+      setComposerPanel(null);
+      setMobileSheet(null);
+      return;
+    }
+    setSwitchingPersonaId(persona.id);
+    setPersonasError("");
+    try {
+      const result = await createConversation(params.characterId, persona.id);
+      setComposerPanel(null);
+      setMobileSheet(null);
+      if (result.conversation.id === conversation.id) return;
+      setLoading(true);
+      router.replace(
+        `/chat/${encodeURIComponent(params.characterId)}?conversation=${encodeURIComponent(result.conversation.id)}`,
+        { scroll: false },
+      );
+    } catch (switchError) {
+      if (redirectIfUnauthorized(switchError)) return;
+      setPersonasError(errorMessage(switchError, { fallback: "Could not open this Persona's story. Try again." }));
+    } finally {
+      setSwitchingPersonaId(null);
+    }
   }
 
   function scrollToLatest() {
@@ -1281,7 +1364,7 @@ function ChatContent() {
               {mobileSheet === "model" && <div className="mobile-model-list">{models.length === 0 ? <p className="model-list-empty">No models are available right now.</p> : models.map((model) => (
                 <button key={model.profile} className={!guest && model.profile === conversation.model_profile ? "selected" : ""} disabled={sending || switchingModel} onClick={() => chooseModel(model.profile)}><span><b>{modelName(model)}<em className="model-tier">{model.tier_label}</em></b><small>{model.description}</small><small>{guest ? `Sign in to unlock · ${modelPrice(model)}` : modelPrice(model)}</small></span><i>{!guest && model.profile === conversation.model_profile ? "✓" : ""}</i></button>
               ))}</div>}
-              {mobileSheet === "role" && <PersonaPicker roleCard={conversationTools.role_card} guest={guest} onManage={openPersonaManager} onAdd={openPersonaCreator} />}
+              {mobileSheet === "role" && <PersonaPicker roleCard={conversationTools.role_card} personas={personas} guest={guest} loading={personasLoading} error={personasError} switchingId={switchingPersonaId} onManage={openPersonaManager} onAdd={openPersonaCreator} onSelect={(persona) => void switchPersona(persona)} onRetry={() => void loadPersonas()} />}
               {mobileSheet === "pinned" && <div className="memory-v1 mobile-memory-v1">
                 <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
                 <section className="permanent-memory-card">
@@ -1320,9 +1403,10 @@ function ChatContent() {
         <div className="history-list">{history.map((item) => {
           const active = item.id === conversation.id;
           const avatar = item.character.avatar_ref ?? item.character.cover_ref ?? "/characters/kai.svg";
-          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={CHAT_LABELS.openConversation(item.character.display_name)}>
+          const personaName = item.persona?.display_name;
+          return <button className={`history-item${active ? " active" : ""}`} key={item.id} disabled={active || sending} onClick={() => router.push(`/chat/${item.character_id}?conversation=${item.id}`)} aria-label={personaName ? `${CHAT_LABELS.openConversation(item.character.display_name)} as ${personaName}` : CHAT_LABELS.openConversation(item.character.display_name)}>
             <span className="history-avatar"><Image src={avatar} alt="" fill sizes="42px" /></span>
-            <span className="history-copy"><strong>{item.character.display_name}</strong><small>{item.character.tagline}</small></span>
+            <span className="history-copy"><strong>{item.character.display_name}</strong><small>{personaName ? `as ${personaName} · ` : ""}{item.character.tagline}</small></span>
           </button>;
         })}</div>
       </aside>}
@@ -1481,7 +1565,7 @@ function ChatContent() {
             {composerPanel === "role" && (
               <div className="composer-popover info-popover persona-popover">
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
-                <PersonaPicker roleCard={conversationTools.role_card} guest={guest} onManage={openPersonaManager} onAdd={openPersonaCreator} />
+                <PersonaPicker roleCard={conversationTools.role_card} personas={personas} guest={guest} loading={personasLoading} error={personasError} switchingId={switchingPersonaId} onManage={openPersonaManager} onAdd={openPersonaCreator} onSelect={(persona) => void switchPersona(persona)} onRetry={() => void loadPersonas()} />
               </div>
             )}
             <div className="composer-tools">

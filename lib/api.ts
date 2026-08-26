@@ -1,4 +1,4 @@
-import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Wallet } from "./types";
+import type { AuthContext, AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, DebugConversationOverview, DebugTurnDetail, DebugTurnSummary, FeedCharacter, GuestProfile, GuestQuota, ModelProfile, Persona, Wallet } from "./types";
 import type { CreatorTag } from "./creator-tags";
 import { cookieValue } from "./cookies.ts";
 import { reportApiFailure, reportStreamFailure } from "./telemetry.ts";
@@ -354,6 +354,43 @@ export function publishCreationDraft(workId: string, expectedRevision: number, i
   }, PUBLISH_TIMEOUT_MS);
 }
 
+export function listPersonas() {
+  return request<{ status: "ok"; items: Persona[] }>("/personas");
+}
+
+export function getPersona(personaId: string) {
+  return request<{ status: "ok"; persona: Persona }>(
+    `/personas/${encodeURIComponent(personaId)}`,
+  );
+}
+
+export function createPersona(input: { display_name: string; description: string; is_default: boolean }) {
+  return request<{ status: "ok"; persona: Persona }>("/personas", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePersona(personaId: string, input: { display_name: string; description: string }) {
+  return request<{ status: "ok"; persona: Persona }>(
+    `/personas/${encodeURIComponent(personaId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
+export function setDefaultPersona(personaId: string) {
+  return request<{ status: "ok"; persona: Persona }>(
+    `/personas/${encodeURIComponent(personaId)}/default`,
+    { method: "PUT" },
+  );
+}
+
+export function deletePersona(personaId: string) {
+  return request<{ status: "ok" }>(`/personas/${encodeURIComponent(personaId)}`, {
+    method: "DELETE",
+  });
+}
+
 export function getBootstrap() {
   return request<{
     status: string;
@@ -496,10 +533,13 @@ export function getFeed(
   return request<FeedPage>(`/feed?${search.toString()}`, init);
 }
 
-export function createConversation(characterId: string) {
+export function createConversation(characterId: string, personaId?: string) {
   return request<{ status: string; conversation: Conversation }>("/conversations", {
     method: "POST",
-    body: JSON.stringify({ character_id: characterId }),
+    body: JSON.stringify({
+      character_id: characterId,
+      ...(personaId ? { persona_id: personaId } : {}),
+    }),
   });
 }
 
