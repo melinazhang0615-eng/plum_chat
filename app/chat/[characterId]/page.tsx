@@ -155,15 +155,12 @@ function ChatContent() {
   const [showWelcome, setShowWelcome] = useState(false);
   useEffect(() => {
     if (loading) return;
-    if (typeof window !== "undefined" && window.localStorage.getItem("plum_welcome_seen")) return;
     const actor = context?.actor;
-    const isNewUser = actor?.kind === "visitor" || (actor?.kind === "guest" && !actor.profile_complete);
+    const isNewUser = !actor || actor.kind === "visitor" || !actor.profile_complete;
     if (!isNewUser) return;
-    // New users only, once ever: show Welcome ~2s after the opening line lands in the room.
-    const timer = window.setTimeout(() => {
-      window.localStorage.setItem("plum_welcome_seen", "1");
-      setShowWelcome(true);
-    }, 2000);
+    // Persisted profile completion is the authority. Dismissing the dialog may defer
+    // onboarding for this visit, but cannot mark an incomplete profile as complete.
+    const timer = window.setTimeout(() => setShowWelcome(true), 2000);
     return () => window.clearTimeout(timer);
   }, [loading, context]);
   const [error, setError] = useState<string | null>(null);

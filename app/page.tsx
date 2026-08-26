@@ -13,7 +13,8 @@ import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum
 import { HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL } from "@/lib/copy";
 import { errorMessage } from "@/lib/error-messages";
 import { formatCoins, formatCompactCount } from "@/lib/format";
-import type { AuthUser, FeedCharacter } from "@/lib/types";
+import { MATURE_CONTENT_NOT_ALLOWED_MESSAGE, preferenceToFeedGender, profileAllowsMature } from "@/lib/audience-policy";
+import type { AuthUser, FeedCharacter, GuestProfile } from "@/lib/types";
 import styles from "./page.module.css";
 
 const MAIN_TABS = ["For You", "Trending", "Latest", "Popular", "Following"] as const;
@@ -55,7 +56,9 @@ function FeedContent() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<string | "create" | null>(null);
+  const [pendingMatureAction, setPendingMatureAction] = useState<"filter" | string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<(typeof MAIN_TABS)[number]>("For You");
   const [limitless, setLimitless] = useState(false);
   const [gender, setGender] = useState("All");
@@ -69,6 +72,9 @@ function FeedContent() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [walletOpen, setWalletOpen] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preferenceAppliedFor = useRef<string | null>(null);
+  const audienceProfile = context?.actor.kind === "visitor" ? null : context?.actor.profile ?? null;
 
   // 标签清单来自"未筛选那一页"，而不是当前列表：一旦按标签筛过，列表里只剩共现的标签，
   // 面板会把用户刚选中的那个标签也弄丢，于是选了就取消不掉。选中项始终并进来兜底。
@@ -159,10 +165,18 @@ function FeedContent() {
 
   useEffect(() => { void loadFirstPage(); }, [loadFirstPage]);
   useEffect(() => () => inFlight.current?.abort(), []);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   useEffect(() => {
     if (!context) return;
     if (context.actor.kind === "member") { setUser(context.actor.user); setBalance(context.wallet?.balance ?? 0); }
     else { setUser(null); setBalance(0); }
+  }, [context]);
+  useEffect(() => {
+    const actor = context?.actor;
+    if (!actor || actor.kind === "visitor" || !actor.profile || preferenceAppliedFor.current === actor.user.id) return;
+    preferenceAppliedFor.current = actor.user.id;
+    const preferred = preferenceToFeedGender(actor.profile.relationship_preference);
+    setGender(GENDER_OPTIONS.find((option) => option.value === preferred)?.label ?? "All");
   }, [context]);
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -184,16 +198,60 @@ function FeedContent() {
       setOpeningId(null);
       // Fallback while the backend still requires a completed profile first
       // (403 guest_profile_required): show the Welcome as a pre-chat gate, then retry.
-      if (openError instanceof ApiError && (openError.status === 403 || openError.status === 401)) {
+      if (openError instanceof ApiError && ["guest_profile_required", "audience_profile_required"].includes(openError.message)) {
         setPendingTarget(characterId); setWelcomeOpen(true); return;
+      }
+      if (openError instanceof ApiError && openError.message === "mature_content_not_allowed") {
+        showMatureDenied(); return;
       }
       setError(errorMessage(openError, { fallback: "Could not start the chat. Please try again later." }));
     }
   }
 
+  function showMatureDenied() {
+    setToast(MATURE_CONTENT_NOT_ALLOWED_MESSAGE);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  }
+
+  function requestMature(action: "filter" | string) {
+    const actor = context?.actor;
+    if (!actor || actor.kind === "visitor" || !actor.profile_complete || !audienceProfile) {
+      setPendingMatureAction(action);
+      setWelcomeOpen(true);
+      return;
+    }
+    if (!profileAllowsMature(audienceProfile)) {
+      showMatureDenied();
+      return;
+    }
+    if (action === "filter") setLimitless(true);
+    else void enterCharacter(action);
+  }
+
+  function selectCharacter(character: FeedCharacter) {
+    if (character.content_rating === "mature") requestMature(character.id);
+    else void enterCharacter(character.id);
+  }
+
+  function completeWelcome(profile: GuestProfile) {
+    setWelcomeOpen(false);
+    const matureAction = pendingMatureAction;
+    setPendingMatureAction(null);
+    if (matureAction) {
+      if (!profileAllowsMature(profile)) { showMatureDenied(); return; }
+      if (matureAction === "filter") setLimitless(true);
+      else void enterCharacter(matureAction);
+      return;
+    }
+    const target = pendingTarget;
+    setPendingTarget(null);
+    if (target && target !== "create") void enterCharacter(target);
+  }
+
   async function signOut() {
     try { await logout(); } catch { /* an expired session is already signed out */ }
-    setUser(null); setBalance(0); setAccountOpen(false); void refresh();
+    setUser(null); setBalance(0); setLimitless(false); setAccountOpen(false); void refresh();
   }
 
   function openCreate() {
@@ -202,7 +260,7 @@ function FeedContent() {
   }
 
   function afterAuthentication(authenticatedUser: AuthUser) {
-    setUser(authenticatedUser); setLoginOpen(false);
+    setUser(authenticatedUser); setLimitless(false); setLoginOpen(false);
     const target = pendingTarget; setPendingTarget(null);
     if (target === "create") router.push("/create");
     else if (target) void enterCharacter(target);
@@ -240,7 +298,7 @@ function FeedContent() {
       <div className="feed-controls">
         <nav className="feed-tabs" aria-label="Discover categories">{MAIN_TABS.map((label) => <button className={activeTab === label ? "active" : ""} key={label} onClick={() => setActiveTab(label)}>{label}</button>)}</nav>
         <div className="feed-filters">
-          <button className={`limitless-switch${limitless ? " active" : ""}`} aria-pressed={limitless} onClick={() => setLimitless((value) => !value)}><span>Limitless</span><i /></button>
+          <button className={`limitless-switch${limitless ? " active" : ""}`} aria-pressed={limitless} onClick={() => limitless ? setLimitless(false) : requestMature("filter")}><span>Limitless</span><i /></button>
           <div className="gender-menu-wrap">
             <button className="gender-filter" aria-label="Character gender" aria-expanded={genderOpen} onClick={() => setGenderOpen((value) => !value)}><span>{gender}</span><i>⌄</i></button>
             {genderOpen && <div className="gender-menu">{GENDER_OPTIONS.map(({ label }) => <button className={gender === label ? "selected" : ""} key={label} onClick={() => { setGender(label); setGenderOpen(false); }}><span>{label}</span>{gender === label && <i>✓</i>}</button>)}</div>}
@@ -253,7 +311,7 @@ function FeedContent() {
       </div>
       {error && <div className="error-banner"><span>{error}</span><button onClick={() => void loadFirstPage()}>Reload</button></div>}
       {loading ? <LoadingState /> : visibleCharacters.length === 0 ? <div className="feed-empty"><strong>No characters match these filters</strong><button onClick={clearFilters}>Clear filters</button></div> : <><div className="character-grid">{visibleCharacters.map((character, index) => <article className="character-card" key={character.id}>
-        <button className="card-hit-area" onClick={() => void enterCharacter(character.id)} disabled={openingId !== null} aria-label={`Start chatting with ${character.display_name}`}>
+        <button className="card-hit-area" onClick={() => selectCharacter(character)} disabled={openingId !== null} aria-label={`Start chatting with ${character.display_name}`}>
           <Image className="character-card-cover" src={character.cover_ref ?? "/characters/kai.svg"} alt={character.display_name} fill priority={index < 6} sizes="(max-width: 560px) 50vw, (max-width: 900px) 33vw, 20vw" />
           <span className="card-darken" />
           {openingId === character.id && <span className="opening-card">Entering story…</span>}
@@ -267,7 +325,8 @@ function FeedContent() {
     </section>
     <footer className="reference-footer"><a>Privacy Policy</a><a>Terms of Service</a><a>Community Guidelines</a><a>About Us</a><CommunityLink className="footer-community-link" label="Contact & Support" /><small>© 2026 PLUM. All rights reserved.</small></footer>
     {loginOpen && <EmailSignInDialog returnTo={pendingTarget === "create" ? "/create" : undefined} onAuthenticated={afterAuthentication} onClose={() => { setLoginOpen(false); setPendingTarget(null); }} />}
-    {welcomeOpen && <WelcomeDialog onComplete={() => { setWelcomeOpen(false); const target = pendingTarget; setPendingTarget(null); if (target && target !== "create") void enterCharacter(target); }} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); }} />}
+    {welcomeOpen && <WelcomeDialog onComplete={completeWelcome} onClose={() => { setWelcomeOpen(false); setPendingTarget(null); setPendingMatureAction(null); }} />}
+    {toast && <div className="audience-toast" role="status" aria-live="polite">{toast}</div>}
   </main>;
 }
 

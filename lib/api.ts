@@ -368,7 +368,7 @@ export function createGuestSession() {
   return request<AuthContext>("/auth/guest/session", { method: "POST" });
 }
 
-export function updateGuestProfile(profile: GuestProfile & { adult_confirmed: boolean }) {
+export function updateGuestProfile(profile: Pick<GuestProfile, "age_band" | "relationship_preference">) {
   return request<AuthContext>("/auth/guest/profile", {
     method: "PATCH",
     body: JSON.stringify(profile),

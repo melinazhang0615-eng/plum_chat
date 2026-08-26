@@ -494,24 +494,21 @@ svg { display: block; }
 .welcome-field { display: block; margin-bottom: 13px; }
 .welcome-field > span { display: block; margin-bottom: 8px; color: rgba(255,255,255,.9); font-size: 11.5px; font-weight: 700; }
 .welcome-field > span i { color: rgba(255,255,255,.65); font-size: 9px; font-style: normal; vertical-align: top; }
-.pronoun-row { display: flex; justify-content: space-around; }
-.pronoun-option { display: grid; justify-items: center; gap: 6px; padding: 0; border: 0; background: transparent; color: #fff; cursor: pointer; }
-.pronoun-circle { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; background: rgba(255,255,255,.06); font-size: 19px; line-height: 1; transition: border-color .15s ease, background .15s ease; }
-.pronoun-option:hover .pronoun-circle { background: rgba(255,255,255,.1); }
-.pronoun-option.active .pronoun-circle { border-color: #fff; background: rgba(255,255,255,.16); box-shadow: 0 0 0 1px #fff inset; }
-.pronoun-option b { font-size: 10.5px; font-weight: 700; }
 .welcome-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.welcome-gender-grid { grid-template-columns: repeat(2, 1fr); }
 .welcome-grid button { height: 32px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; color: rgba(255,255,255,.85); background: rgba(255,255,255,.05); cursor: pointer; font-size: 11px; font-weight: 600; transition: background .15s ease, border-color .15s ease; }
 .welcome-grid button:hover { background: rgba(255,255,255,.09); }
 .welcome-grid button.active { border-color: #fff; color: #fff; background: rgba(255,255,255,.12); }
+.welcome-ineligible-card { padding: 34px 28px; text-align: center; }
+.welcome-ineligible-card h1 { margin-bottom: 10px; }
+.welcome-ineligible-card p { margin: 0; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.6; }
 .welcome-enter { width: min(240px, 100%); height: 40px; display: block; margin: 16px auto 0; border: 0; border-radius: 999px; color: #17171a; background: #fff; font-size: 12.5px; font-weight: 800; cursor: pointer; transition: opacity .15s ease, background .15s ease; }
 .welcome-enter:hover:not(:disabled) { background: #ececec; }
 .welcome-enter:disabled { opacity: .35; cursor: not-allowed; }
 .welcome-card { position: relative; }
 .welcome-close { position: absolute; top: 12px; right: 14px; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: rgba(255,255,255,.55); background: transparent; font-size: 20px; line-height: 1; cursor: pointer; transition: color .15s ease, background .15s ease; }
 .welcome-close:hover { color: #fff; background: rgba(255,255,255,.08); }
-.welcome-skip { display: block; margin: 10px auto 0; padding: 4px 10px; border: 0; background: transparent; color: rgba(255,255,255,.5); font-size: 11.5px; cursor: pointer; transition: color .15s ease; }
-.welcome-skip:hover { color: rgba(255,255,255,.8); }
+.audience-toast { position: fixed; z-index: 140; left: 50%; bottom: max(24px, env(safe-area-inset-bottom)); width: max-content; max-width: calc(100% - 32px); padding: 11px 16px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; color: rgba(255,255,255,.92); background: rgba(39,23,26,.97); box-shadow: 0 18px 55px rgba(0,0,0,.38); transform: translateX(-50%); font-size: 11px; text-align: center; }
 
 /* ===== Account center ===== */
 .account-menu-rich { width: 220px; padding: 7px; }
