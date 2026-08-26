@@ -11,7 +11,42 @@ jobs:
     environment: ec201
 
     steps:
+      - name: Notify Feishu - deployment started
+        continue-on-error: true
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_DEPLOY_CHAT_ID: ${{ secrets.FEISHU_DEPLOY_CHAT_ID }}
+        run: |
+          set -e
+
+          AUTH_PAYLOAD=$(jq -n \
+            --arg app_id "$FEISHU_APP_ID" \
+            --arg app_secret "$FEISHU_APP_SECRET" \
+            '{app_id: $app_id, app_secret: $app_secret}')
+          TOKEN=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_PAYLOAD" \
+            https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal \
+            | jq -er '.tenant_access_token')
+
+          TEXT=$(printf 'Plum frontend deployment started\nCommit: %.7s\nTriggered by: %s\nRun: %s/%s/actions/runs/%s' \
+            "$GITHUB_SHA" "$GITHUB_ACTOR" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          MESSAGE_PAYLOAD=$(jq -n \
+            --arg receive_id "$FEISHU_DEPLOY_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{receive_id: $receive_id, msg_type: "text", content: ({text: $text} | tojson)}')
+          RESPONSE=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+            -d "$MESSAGE_PAYLOAD")
+          test "$(jq -r '.code' <<<"$RESPONSE")" = "0"
+
       - name: Deploy frontend to EC201
+        id: deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -39,3 +74,44 @@ jobs:
             curl -fsS http://127.0.0.1:3000/ -o /dev/null
 
             echo "Deployment successful"
+
+      - name: Notify Feishu - deployment result
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_DEPLOY_CHAT_ID: ${{ secrets.FEISHU_DEPLOY_CHAT_ID }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          set -e
+
+          AUTH_PAYLOAD=$(jq -n \
+            --arg app_id "$FEISHU_APP_ID" \
+            --arg app_secret "$FEISHU_APP_SECRET" \
+            '{app_id: $app_id, app_secret: $app_secret}')
+          TOKEN=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "$AUTH_PAYLOAD" \
+            https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal \
+            | jq -er '.tenant_access_token')
+
+          if [ "$DEPLOY_OUTCOME" = "success" ]; then
+            STATUS="succeeded"
+          else
+            STATUS="failed"
+          fi
+          TEXT=$(printf 'Plum frontend deployment %s\nCommit: %.7s\nTriggered by: %s\nRun: %s/%s/actions/runs/%s' \
+            "$STATUS" "$GITHUB_SHA" "$GITHUB_ACTOR" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          MESSAGE_PAYLOAD=$(jq -n \
+            --arg receive_id "$FEISHU_DEPLOY_CHAT_ID" \
+            --arg text "$TEXT" \
+            '{receive_id: $receive_id, msg_type: "text", content: ({text: $text} | tojson)}')
+          RESPONSE=$(curl -fsS --connect-timeout 5 --max-time 15 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id" \
+            -d "$MESSAGE_PAYLOAD")
+          test "$(jq -r '.code' <<<"$RESPONSE")" = "0"
