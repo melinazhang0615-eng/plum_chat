@@ -81,6 +81,7 @@ function FeedContent() {
   const preferenceAppliedFor = useRef<string | null>(null);
   const urlStateReady = useRef(false);
   const audienceProfile = context?.actor.kind === "visitor" ? null : context?.actor.profile ?? null;
+  const canBrowseMature = profileAllowsMature(audienceProfile);
 
   // 每次筛选条件变化都自增；回来的响应如果不是最新那一代就整条丢掉。去抖不能替代它——
   // 两个请求都发出去之后，谁先回来是网络说的，慢的那个先发、后到，就会把新结果盖回旧结果。
@@ -148,7 +149,13 @@ function FeedContent() {
     return () => clearTimeout(timer);
   }, [searchText, query]);
 
-  useEffect(() => { void loadFirstPage(); }, [loadFirstPage]);
+  useEffect(() => {
+    // Do not let the public, profile-less request race auth bootstrap. Re-fetch when an
+    // adult audience profile becomes available; otherwise mature characters remain
+    // missing until a manual refresh/filter change.
+    if (authLoading) return;
+    void loadFirstPage();
+  }, [authLoading, canBrowseMature, loadFirstPage]);
   useEffect(() => {
     let cancelled = false;
     void getFeedTags()
