@@ -285,6 +285,39 @@ function ChatContent() {
   // Anchored under the memory icon in the toolbar, not above the composer: the
   // panel has to open next to the control that opens it.
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+  useEffect(() => {
+    // Capture phase: the message stage stops propagation on some children, so a
+    // bubble-phase listener would never see those clicks. Overlays and their
+    // triggers opt out by marker and are handled by their own onClick instead.
+    function onPointerDown(event: globalThis.PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-overlay], [data-overlay-trigger]")) return;
+      closeOverlays();
+    }
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") closeOverlays();
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  /**
+   * Six popovers each owned their own state with no shared dismissal, so any two
+   * could sit on screen together and none closed on an outside click. One closer
+   * plus one document listener keeps them mutually exclusive.
+   */
+  function closeOverlays() {
+    setComposerPanel(null);
+    setShowChatMenu(false);
+    setMemoryPanelOpen(false);
+    setLanguageOpen(false);
+    setWalletOpen(false);
+    setAccountOpen(false);
+  }
   // Memories can also be written by hand from the same top-bar control. The value
   // records which surface opened the writing view, because the two surfaces render
   // it differently: a centred dialog on desktop, a full screen page on mobile.
@@ -1441,10 +1474,10 @@ function ChatContent() {
         <div className="site-header-actions">
           <button className="header-circle" aria-label={HEADER_LABELS.search} onClick={() => router.push("/?search=1")}><SearchIcon /></button>
           <button className="header-circle" aria-label={HEADER_LABELS.create} title={HEADER_LABELS.create} onClick={() => router.push("/create")}><CreateIcon /></button>
-          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}</div>
-          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}</div>}
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" data-overlay-trigger aria-label={HEADER_LABELS.language} aria-expanded={languageOpen} onClick={() => { const next = !languageOpen; closeOverlays(); setLanguageOpen(next); }}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">{LANGUAGE_MENU.english} <span>✓</span></button><button>{LANGUAGE_MENU.chinese}</button><small>{LANGUAGE_MENU.note}</small></div>}</div>
+          {!guest && <div className="header-menu-wrap"><button className="coin-button" data-overlay-trigger onClick={() => { const next = !walletOpen; closeOverlays(); setWalletOpen(next); }} aria-label={HEADER_LABELS.coinBalance(formatCoins(balance))}><span>✦</span><strong>{formatCoins(balance)}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>{WALLET_PANEL.balance}</small><strong>{formatCoins(balance)}</strong><h3>{WALLET_PANEL.history}</h3><p>{WALLET_PANEL.empty}</p><button disabled>{WALLET_PANEL.topUp}</button></div>}</div>}
           {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>{HEADER_LABELS.signIn}</button>}
-          {user && <AccountDropdown user={user} open={accountOpen} onToggle={() => setAccountOpen((value) => !value)} onSignOut={() => void signOut()} />}
+          {user && <AccountDropdown user={user} open={accountOpen} onToggle={() => { const next = !accountOpen; closeOverlays(); setAccountOpen(next); }} onSignOut={() => void signOut()} />}
         </div>
       </header>
 
@@ -1502,15 +1535,16 @@ function ChatContent() {
               <button
                 ref={desktopMemoryIconRef}
                 className="more-pill memory-pill has-tooltip"
+                data-overlay-trigger
                 data-tooltip={memories.length > 0 ? `Memory · ${memories.length} saved` : "Memory"}
                 aria-expanded={memoryPanelOpen}
-                onClick={() => { setShowChatMenu(false); setMemoryPanelOpen((value) => !value); }}
+                onClick={() => { const next = !memoryPanelOpen; closeOverlays(); setMemoryPanelOpen(next); }}
                 aria-label="查看本次对话的记忆"
               ><MemoryIcon />{memories.length > 0 && <i>{memories.length}</i>}</button>
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => { setMemoryPanelOpen(false); setShowChatMenu((value) => !value); }} aria-label={CHAT_LABELS.settings}><MoreIcon /></button>
+              <button className="more-pill has-tooltip" data-overlay-trigger data-tooltip="Layout & settings" onClick={() => { const next = !showChatMenu; closeOverlays(); setShowChatMenu(next); }} aria-label={CHAT_LABELS.settings}><MoreIcon /></button>
             </div>
             {memoryPanelOpen && (
-              <div className="memory-popover">
+              <div className="memory-popover" data-overlay>
                 <header><b>Memory</b><button onClick={() => setMemoryPanelOpen(false)} aria-label="关闭记忆面板">×</button></header>
                 <div className="memory-v1">
                   <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
@@ -1530,7 +1564,7 @@ function ChatContent() {
               </div>
             )}
             {showChatMenu && (
-              <div className="chat-settings-popover">
+              <div className="chat-settings-popover" data-overlay>
                 <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>Reset layout</b><small>Show profile and standard chat width</small></div></button>
                 <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>Restart conversation</b><small>Archive this chat and start fresh</small></div></button>
               </div>
@@ -1597,7 +1631,7 @@ function ChatContent() {
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
             {composerPanel === "model" && (
-              <div className="composer-popover model-popover">
+              <div className="composer-popover model-popover" data-overlay>
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
                 {models.length === 0 ? <p className="model-list-empty">No models are available right now.</p> : models.map((model) => (
                   <button
@@ -1613,15 +1647,15 @@ function ChatContent() {
               </div>
             )}
             {composerPanel === "role" && (
-              <div className="composer-popover info-popover persona-popover">
+              <div className="composer-popover info-popover persona-popover" data-overlay>
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 <PersonaPicker roleCard={conversationTools.role_card} personas={personas} guest={guest} loading={personasLoading} error={personasError} switchingId={switchingPersonaId} onManage={openPersonaManager} onAdd={openPersonaCreator} onSelect={(persona) => void switchPersona(persona)} onRetry={() => void loadPersonas()} />
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
-              <button className="chat-card-pill" onClick={() => setComposerPanel(composerPanel === "role" ? null : "role")}><RoleIcon /><span className="chat-card-pill-label">Role Card</span></button>
-              <button className="chat-card-pill" onClick={() => setMemoryPanelOpen((value) => !value)}><CommentIcon /><span className="chat-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
+              <button className="chat-card-pill has-tooltip" data-overlay-trigger data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => { const next = composerPanel === "model" ? null : "model" as const; closeOverlays(); setComposerPanel(next); }} aria-label={CHAT_LABELS.model}><ModelIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill" data-overlay-trigger onClick={() => { const next = composerPanel === "role" ? null : "role" as const; closeOverlays(); setComposerPanel(next); }}><RoleIcon /><span className="chat-card-pill-label">Role Card</span></button>
+              <button className="chat-card-pill" data-overlay-trigger onClick={() => { const next = !memoryPanelOpen; closeOverlays(); setMemoryPanelOpen(next); }}><CommentIcon /><span className="chat-card-pill-label">Memory{memories.length > 0 ? ` · ${memories.length}` : ""}</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
               <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label={CHAT_LABELS.inspiration} onClick={useInspiration}><InspirationIcon /></button>

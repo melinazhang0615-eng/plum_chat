@@ -22,10 +22,10 @@ export function AccountDropdown({ user, open, onToggle, onSignOut, active }: Acc
 
   return (
     <div className="header-menu-wrap account-menu-wrap">
-      <button className="account-button" onClick={onToggle} aria-label="Account" aria-expanded={open}>
+      <button className="account-button" data-overlay-trigger onClick={onToggle} aria-label="Account" aria-expanded={open}>
         <i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b>
       </button>
-      {open && <div className="header-dropdown account-menu account-menu-rich">
+      {open && <div className="header-dropdown account-menu account-menu-rich" data-overlay>
         <button className={active === "studio" ? "selected" : ""} onClick={() => go("/studio")}><StudioIcon /><span>{ACCOUNT_MENU.studio}</span></button>
         <button className={active === "wallet" ? "selected" : ""} onClick={() => go("/wallet")}><WalletIcon /><span>{ACCOUNT_MENU.wallet}</span></button>
         <button className={active === "subscription" ? "selected" : ""} onClick={() => go("/subscription")}><SubscriptionIcon /><span>{ACCOUNT_MENU.subscription}</span></button>
