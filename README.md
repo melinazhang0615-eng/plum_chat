@@ -4,6 +4,7 @@
 
 - [MVP 产品需求文档](./docs/PRD-MVP-v0.1.md)
 - [新用户注册登录 PRD](./docs/PRD-02-registration-login.md)
+- [Persona V1 产品决策与上线复核说明](./docs/HANDOFF-08-persona-v1-decisions.md)
 - [总体技术架构](./docs/TECH-01-architecture.md)
 - [前端技术方案](./docs/TECH-02-frontend.md)
 - [后端与 Agent 框架集成方案](./docs/TECH-03-backend-agent-integration.md)
