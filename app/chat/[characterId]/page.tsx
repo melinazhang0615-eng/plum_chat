@@ -9,6 +9,7 @@ import { EmailSignInDialog, PlumAuthProvider, WelcomeDialog, usePlumAuth } from 
 import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
 import { formatCompactCount } from "@/lib/format";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
+import { BackIcon, CloseIcon, CollapseProfileIcon, CollectionsIcon, CommentIcon, ContinueIcon, CopyIcon, CreateIcon, EditIcon, HeartIcon, HelpIcon, InspirationIcon, MemoryIcon, MoreIcon, NoteIcon, PlusIcon, RestartIcon, RoleIcon, ScrollLatestIcon, SearchIcon, SendIcon, ShareIcon, ThumbIcon, TranslationIcon } from "@/components/icons";
 
 function formatTime(value?: string) {
   if (!value) return "Just now";
@@ -17,11 +18,6 @@ function formatTime(value?: string) {
   return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-function SearchIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.3 4.3" /></svg>;
-}
-function CreateIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>; }
-function TranslationIcon() { return <svg viewBox="0 0 1024 1024" aria-hidden="true"><path d="M550.761 343.763l1.717 3.313 122.97 281.118a26.353 26.353 0 0 1-46.772 24.064l-1.506-2.952-31.533-72.071H461.011l-31.503 72.071a26.353 26.353 0 0 1-49.423-18.01l1.114-3.102 123-281.118a26.383 26.383 0 0 1 46.562-3.313zm-22.407 79.601-44.273 101.165h88.516l-44.273-101.165z" /><path d="M521.306 120.471a377.826 377.826 0 0 1 370.146 302.2 26.353 26.353 0 1 1-51.621 10.481 325.12 325.12 0 0 0-623.195-48.489l-.903 2.56 58.307-19.426a26.353 26.353 0 0 1 32.106 13.583l1.204 3.072a26.353 26.353 0 0 1-13.552 32.106l-3.103 1.204-105.411 35.147a26.353 26.353 0 0 1-34.154-30.238 377.826 377.826 0 0 1 370.146-302.2zm334.878 423.393a26.353 26.353 0 0 1 35.298 29.847 377.826 377.826 0 0 1-740.352 0 26.353 26.353 0 0 1 51.652-10.481 325.12 325.12 0 0 0 620.213 56.23l2.891-7.469-42.134 16.203a26.353 26.353 0 0 1-32.678-12.107l-1.385-3.012a26.353 26.353 0 0 1 12.137-32.678l3.012-1.385 91.346-35.148z" /></svg>; }
 const MODEL_LABELS: Record<string, string> = { fast: "Fast", balanced: "Balanced", immersive: "Immersive" };
 const modelName = (m?: { profile: string; display_name: string } | null) => (m ? (MODEL_LABELS[m.profile] ?? m.display_name) : undefined);
 // Guests get an empty model list from the backend (they are locked to guest_free),
@@ -37,92 +33,9 @@ const GUEST_MODEL_TEASER: { profile: ModelProfile["profile"]; display_name: stri
 // message, so a pin written by hand cannot outgrow one saved from a reply.
 const MEMORY_DRAFT_MAX = 2000;
 
-function SendIcon() {
-  return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M25.54 5.17 3.79 13.57c-1.23.47-1.2 1.16.06 1.53l5.26 1.56 2.14 6.36c.28.84 1.01 1.01 1.63.39l2.76-2.73 5.44 3.99c.71.52 1.44.25 1.63-.62l3.97-17.89c.19-.86-.32-1.3-1.14-.99Zm-3.31 4.05-9.28 8.27c-.17.15-.32.44-.34.66l-.41 3.85c-.05.44-.19.46-.33.04l-1.8-5.41c-.07-.22.03-.48.22-.59l11.77-7.06c.75-.45.83-.34.17.24Z" /></svg>;
-}
 function StopIcon() {
   return <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="10" y="10" width="10" height="10" rx="1.5" /></svg>;
 }
-function MoreIcon() {
-  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 10.83a.83.83 0 1 0 0-1.66.83.83 0 0 0 0 1.66ZM10 5a.83.83 0 1 0 0-1.67A.83.83 0 0 0 10 5Zm0 11.67A.83.83 0 1 0 10 15a.83.83 0 0 0 0 1.67Z" /></svg>;
-}
-function LevelIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 8 4v7c0 4.2-3.1 7.2-8 9-4.9-1.8-8-4.8-8-9V6l8-4Z" /><path d="m8 11 2.5 2.5L16.5 8M7 6.5l5-2.2 5 2.2" /></svg>;
-}
-function BookIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5.2c3.4-.7 6.2 0 8.5 2.1v12c-2.3-2.1-5.1-2.8-8.5-2.1v-12Zm17 0c-3.4-.7-6.2 0-8.5 2.1v12c2.3-2.1 5.1-2.8 8.5-2.1v-12Z" /></svg>;
-}
-function MutedAutoIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h3l4 3V7l-4 3H4ZM15 9.5l5 5m0-5-5 5M3 3l18 18" /></svg>;
-}
-function ThumbIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 21H4.8A1.8 1.8 0 0 1 3 19.2v-7.4A1.8 1.8 0 0 1 4.8 10h2.7v11Zm0-10.7 3.6-6.1c.55-.94 1.77-1.28 2.74-.77.8.43 1.23 1.35 1.04 2.24L14 9.5h4.9a2.1 2.1 0 0 1 2.02 2.68l-2.06 7.15A2.3 2.3 0 0 1 16.65 21H7.5V10.3Z" /></svg>;
-}
-function HeartIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z" /></svg>;
-}
-function ModelIcon() {
-  return <svg viewBox="0 0 14 14" aria-hidden="true"><path d="M.88 7.83a1.65 1.65 0 0 1 0-1.65l2.35-4.07a1.65 1.65 0 0 1 1.43-.82h4.69c.59 0 1.13.31 1.43.82l2.34 4.07a1.65 1.65 0 0 1 0 1.65l-2.35 4.06a1.65 1.65 0 0 1-1.42.82H4.66c-.59 0-1.14-.31-1.43-.82L.88 7.83Z" /><path d="M4 6h5.52a.2.2 0 0 0 .14-.34L8 4m2 4H4.48a.2.2 0 0 0-.14.34L6 10" /></svg>;
-}
-function NoteIcon() {
-  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.25 7.08h6.41M6.25 11.2h5.03M15.4 6.36V4.33c0-1.01-.82-1.83-1.83-1.83H5.33c-1.01 0-1.83.82-1.83 1.83V14.4c0 1.02.82 1.84 1.83 1.84h4.12" /><path d="m15.84 9.22.84-.22c.29.17.39.54.22.83l-3.52 6.11-.72.5-.42-.24.02-.65 3.58-6.33Z" /></svg>;
-}
-function RoleIcon() {
-  return <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6.3" r="3" /><path d="M4.2 17c.45-3.56 2.4-5.34 5.8-5.34s5.35 1.78 5.8 5.34" /></svg>;
-}
-function SceneImageIcon() {
-  return <svg viewBox="0 0 30 30" aria-hidden="true"><path d="M15 7.25h-3A3.25 3.25 0 0 0 8.75 10.5V18A3.25 3.25 0 0 0 12 21.25h6A3.25 3.25 0 0 0 21.25 18v-3.68" /><circle cx="12.5" cy="12.5" r="1.7" /><path d="m9 17.1 2.5-2.3 2.45 2.05 1.45-1.25 5.55 3.25M20 7.2l.78 1.8 1.8.78-1.8.78-.78 1.8-.78-1.8-1.8-.78 1.8-.78L20 7.2Z" /></svg>;
-}
-function SceneVideoIcon() {
-  return <svg viewBox="0 0 30 30" aria-hidden="true"><rect x="7.8" y="7.8" width="14.4" height="14.4" rx="4" /><path d="m13.3 12.5 5 2.9-5 2.9v-5.8ZM21.2 6.7l.58 1.35 1.35.58-1.35.58-.58 1.35-.58-1.35-1.35-.58 1.35-.58.58-1.35Z" /></svg>;
-}
-function GalleryIcon() {
-  return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.2 4.8h8.2a2 2 0 0 1 2 2V15a2 2 0 0 1-2 2H5.2a2 2 0 0 1-2-2V6.8a2 2 0 0 1 2-2Z" /><path d="M6.4 4.7V3.8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v8.3M4 14l3.2-3.1 2.4 2 1.6-1.4 3.6 3.1" /><circle cx="11.8" cy="8.2" r="1.2" /></svg>;
-}
-function InspirationIcon() {
-  return <svg viewBox="0 0 26 26" aria-hidden="true"><path d="M9.4 18.4h7.2M10.5 21.2h5M13 3.4a7 7 0 0 0-4.2 12.6c.85.65 1.3 1.31 1.42 2h5.56c.12-.69.57-1.35 1.42-2A7 7 0 0 0 13 3.4Z" /><path d="M13 0v2M3.9 4.1l1.45 1.45M0 13h2M22.1 4.1l-1.45 1.45M26 13h-2" /></svg>;
-}
-function CommentIcon() {
-  return <svg className="comment-ico" viewBox="0 0 16 16" aria-hidden="true"><path fillRule="evenodd" clipRule="evenodd" d="M8 1.7c3.5 0 6.3 2.3 6.3 5.2 0 2.88-2.8 5.2-6.3 5.2-.62 0-1.22-.07-1.78-.2l-3.02 1.5c-.28.14-.6-.12-.52-.42l.63-2.3C2.06 9.86 1.7 8.64 1.7 6.9 1.7 4 4.5 1.7 8 1.7ZM5.4 6a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Zm2.6 0a.95.95 0 1 0 0 1.9.95.95 0 0 0 0-1.9Z" /></svg>;
-}
-function MemoryIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.2a2.8 2.8 0 0 0-5.3-1.3A2.9 2.9 0 0 0 4 6.8a3 3 0 0 0-.6 4.7 3 3 0 0 0 1 4.7 2.9 2.9 0 0 0 4.9 1.9A2.8 2.8 0 0 0 12 16.2V5.2Z" /><path d="M12 5.2a2.8 2.8 0 0 1 5.3-1.3A2.9 2.9 0 0 1 20 6.8a3 3 0 0 1 .6 4.7 3 3 0 0 1-1 4.7 2.9 2.9 0 0 1-4.9 1.9A2.8 2.8 0 0 1 12 16.2V5.2Z" /><path d="M12 6.6v11.8" /></svg>;
-}
-function CopyIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2.4" /><path d="M15.4 6.4A2.4 2.4 0 0 0 13 4H6.4A2.4 2.4 0 0 0 4 6.4V13a2.4 2.4 0 0 0 2.4 2.4" /></svg>;
-}
-function ContinueIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 7.5 5 4.5-5 4.5M13 7.5l5 4.5-5 4.5" /></svg>;
-}
-function ScrollLatestIcon() {
-  return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M22.4 21.6H9.6M16 9.6v9.1m0 0 4-4.2m-4 4.2-4-4.2" /></svg>;
-}
-function BackIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>;
-}
-function CloseIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>;
-}
-function EditIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" /><path d="m14.5 5.5 4 4" /></svg>;
-}
-function PlusIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13" /></svg>;
-}
-function HelpIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6" /><path d="M9.7 9.4a2.4 2.4 0 0 1 4.66.75c0 1.6-2.33 2.1-2.33 3.55" /><path d="M12 16.8h.01" /></svg>;
-}
-function RestartIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.8 9A8 8 0 1 1 5 15.5M4.8 9V4.5M4.8 9h4.5" /></svg>;
-}
-function ShareIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.2" /><circle cx="6" cy="12" r="2.2" /><circle cx="18" cy="19" r="2.2" /><path d="m8 11 8-5M8 13l8 5" /></svg>;
-}
-function CollapseProfileIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>;
-}
-function CollectionsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5.5h10.5A2.5 2.5 0 0 1 20 8v10.5H9.5A2.5 2.5 0 0 1 7 16V5.5Z" /><path d="M7 8H5.5A2.5 2.5 0 0 0 3 10.5V19a2 2 0 0 0 2 2h10.5a2.5 2.5 0 0 0 2.5-2.5" /><path className="collection-spark" d="m13.2 7.1 1.05 2.55 2.55 1.05-2.55 1.05-1.05 2.55-1.05-2.55L9.6 10.7l2.55-1.05 1.05-2.55Z" /><path className="collection-spark" d="m17.4 5 .38.92.92.38-.92.38-.38.92-.38-.92-.92-.38.92-.38.38-.92Z" /></svg>; }
-
 function ChatLoading() {
   return <main className="chat-loading"><div className="loading-mark"><i /><i /><i /></div><p>Stepping into the character&apos;s world…</p></main>;
 }
@@ -225,6 +138,20 @@ function ChatContent() {
   // Anchored under the memory icon in the toolbar, not above the composer: the
   // panel has to open next to the control that opens it.
   const [memoryPanelOpen, setMemoryPanelOpen] = useState(false);
+
+  /**
+   * Every popover on this page used to own its state with no shared dismissal,
+   * so they stacked on top of each other and none closed on an outside click.
+   * One closer + one document listener keeps them mutually exclusive.
+   */
+  function closeOverlays() {
+    setComposerPanel(null);
+    setShowChatMenu(false);
+    setMemoryPanelOpen(false);
+    setLanguageOpen(false);
+    setWalletOpen(false);
+    setAccountOpen(false);
+  }
   // Memories can also be written by hand from the same top-bar control. The value
   // records which surface opened the writing view, because the two surfaces render
   // it differently: a centred dialog on desktop, a full screen page on mobile.
@@ -322,6 +249,24 @@ function ChatContent() {
     window.addEventListener("resize", collapseHistoryIfItOverlapsProfile);
     return () => window.removeEventListener("resize", collapseHistoryIfItOverlapsProfile);
   }, [historyOpen]);
+  useEffect(() => {
+    // Overlays and their triggers opt out by marker, so a click on either is
+    // handled by its own onClick instead of being swallowed here.
+    function onPointerDown(event: globalThis.PointerEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-overlay], [data-overlay-trigger]")) return;
+      closeOverlays();
+    }
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") closeOverlays();
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
   useEffect(() => () => {
     abortRef.current?.abort();
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
@@ -1125,6 +1070,7 @@ function ChatContent() {
               <div className={`mobile-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={`mobile-${message.id}`}>
                 {message.role === "assistant" && <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>}
                 <div className="mobile-message-stack">
+                  {message.role === "assistant" && <b className="message-author">{displayName}</b>}
                   {waiting
                     ? <div className="typing"><i /><i /><i /></div>
                     : <div
@@ -1242,10 +1188,10 @@ function ChatContent() {
         <div className="site-header-actions">
           <button className="header-circle" aria-label="搜索" onClick={() => router.push("/?search=1")}><SearchIcon /></button>
           <button className="header-circle" aria-label="创作" title="创作" onClick={() => router.push("/create")}><CreateIcon /></button>
-          <div className="header-menu-wrap"><button className="header-circle language-symbol" aria-label="切换语言" aria-expanded={languageOpen} onClick={() => setLanguageOpen((value) => !value)}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu"><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
-          {!guest && <div className="header-menu-wrap"><button className="coin-button" onClick={() => setWalletOpen((value) => !value)} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel"><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
+          <div className="header-menu-wrap"><button className="header-circle language-symbol" data-overlay-trigger aria-label="切换语言" aria-expanded={languageOpen} onClick={() => { const next = !languageOpen; closeOverlays(); setLanguageOpen(next); }}><TranslationIcon /></button>{languageOpen && <div className="header-dropdown language-menu" data-overlay><button className="selected">简体中文 <span>✓</span></button><button>English</button><small>More languages coming soon</small></div>}</div>
+          {!guest && <div className="header-menu-wrap"><button className="coin-button" data-overlay-trigger onClick={() => { const next = !walletOpen; closeOverlays(); setWalletOpen(next); }} aria-label={`金币余额 ${balance}`}><span>✦</span><strong>{balance.toLocaleString("zh-CN")}</strong></button>{walletOpen && <div className="header-dropdown wallet-panel" data-overlay><small>Coin balance</small><strong>{balance.toLocaleString("en-US")}</strong><h3>Transaction history</h3><p>No transactions yet</p><button disabled>Top-up · coming soon</button></div>}</div>}
           {guest && <button className="guest-header-login" onClick={() => setSignInOpen(true)}>登录</button>}
-          {user && <div className="header-menu-wrap"><button className="account-button" onClick={() => setAccountOpen((value) => !value)} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu"><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
+          {user && <div className="header-menu-wrap"><button className="account-button" data-overlay-trigger onClick={() => { const next = !accountOpen; closeOverlays(); setAccountOpen(next); }} aria-label="用户设置"><i>{user.display_name.slice(0, 1).toUpperCase()}</i><span>{user.display_name}</span><b>⌄</b></button>{accountOpen && <div className="header-dropdown account-menu" data-overlay><button disabled>Account settings · coming soon</button><button onClick={() => void signOut()}>Sign out</button></div>}</div>}
         </div>
       </header>
 
@@ -1301,15 +1247,16 @@ function ChatContent() {
               <button
                 ref={desktopMemoryIconRef}
                 className="more-pill memory-pill has-tooltip"
+                data-overlay-trigger
                 data-tooltip={memories.length > 0 ? `Memory · ${memories.length} saved` : "Memory"}
                 aria-expanded={memoryPanelOpen}
-                onClick={() => { setShowChatMenu(false); setMemoryPanelOpen((value) => !value); }}
+                onClick={() => { const next = !memoryPanelOpen; closeOverlays(); setMemoryPanelOpen(next); }}
                 aria-label="查看本次对话的记忆"
               ><MemoryIcon />{memories.length > 0 && <i>{memories.length}</i>}</button>
-              <button className="more-pill has-tooltip" data-tooltip="Layout & settings" onClick={() => { setMemoryPanelOpen(false); setShowChatMenu((value) => !value); }} aria-label="对话布局与设置"><MoreIcon /></button>
+              <button className="more-pill has-tooltip" data-overlay-trigger data-tooltip="Layout & settings" onClick={() => { const next = !showChatMenu; closeOverlays(); setShowChatMenu(next); }} aria-label="对话布局与设置"><MoreIcon /></button>
             </div>
             {memoryPanelOpen && (
-              <div className="memory-popover">
+              <div className="memory-popover" data-overlay>
                 <header><b>Memory</b><button onClick={() => setMemoryPanelOpen(false)} aria-label="关闭记忆面板">×</button></header>
                 <div className="memory-v1">
                   <p className="memory-lede">These memories become long-term facts that shape {displayName}&apos;s future replies.</p>
@@ -1329,7 +1276,7 @@ function ChatContent() {
               </div>
             )}
             {showChatMenu && (
-              <div className="chat-settings-popover">
+              <div className="chat-settings-popover" data-overlay>
                 <button onClick={() => { setShowProfile(true); setShowChatMenu(false); }}><span>↺</span><div><b>Reset layout</b><small>Show profile and standard chat width</small></div></button>
                 <button onClick={() => { setShowChatMenu(false); setShowRestart(true); }}><span>＋</span><div><b>Restart conversation</b><small>Archive this chat and start fresh</small></div></button>
               </div>
@@ -1363,6 +1310,7 @@ function ChatContent() {
                 <div className={`reference-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={message.id}>
                   {message.role === "assistant" && <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>}
                   <div className="reference-message-stack">
+                    {message.role === "assistant" && <b className="message-author">{displayName}</b>}
                     {waiting
                       ? <div className="typing"><i /><i /><i /></div>
                       : <div className="reference-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
@@ -1396,7 +1344,7 @@ function ChatContent() {
           <section className="reference-composer-panel">
             {error && <div className="composer-error">{error}<button onClick={() => setError(null)}>×</button></div>}
             {composerPanel === "model" && (
-              <div className="composer-popover model-popover">
+              <div className="composer-popover model-popover" data-overlay>
                 <header><b>Story model</b><small>{guest ? "Try any model — sign in to unlock" : "Choose the model for this conversation"}</small></header>
                 {(guest ? GUEST_MODEL_TEASER : models).map((model) => (
                   <button
@@ -1412,7 +1360,7 @@ function ChatContent() {
               </div>
             )}
             {composerPanel === "role" && (
-              <div className="composer-popover info-popover">
+              <div className="composer-popover info-popover" data-overlay>
                 <header><b>Role Card</b><button onClick={() => setComposerPanel(null)}>×</button></header>
                 {conversationTools.role_card ? (
                   <><p><span className="test-user-avatar">{conversationTools.role_card.display_name.slice(0, 1).toUpperCase()}</span><strong>{conversationTools.role_card.display_name}</strong></p><small>{conversationTools.role_card.description} Using a default test identity for now; editable role cards coming soon.</small></>
@@ -1420,7 +1368,7 @@ function ChatContent() {
               </div>
             )}
             <div className="composer-tools">
-              <button className="chat-card-pill has-tooltip" data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => setComposerPanel(composerPanel === "model" ? null : "model")} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
+              <button className="chat-card-pill has-tooltip" data-overlay-trigger data-tooltip={selectedModel ? `${modelName(selectedModel)} · ${selectedModel.coin_cost} coins` : "Select model"} onClick={() => { const next = composerPanel === "model" ? null : "model" as const; closeOverlays(); setComposerPanel(next); }} aria-label="选择对话模型"><RoleIcon /><span className="chat-card-pill-label">{modelName(selectedModel) ?? "Model"}</span></button>
             </div>
             <form className="reference-composer" onSubmit={submit}>
               <button type="button" className="inspiration-button has-tooltip" data-tooltip="Inspiration" aria-label="生成灵感提示" onClick={useInspiration}><InspirationIcon /></button>
