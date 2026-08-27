@@ -11,8 +11,9 @@ import { EmailSignInDialog, WelcomeDialog, usePlumAuth } from "@/components/plum
 import { ApiError, cancelTurn, createConversation, createConversationPin, getAuthContext, getConversation, getConversationHistory, logout, restartConversation, sendTurn, sendTurnStream, setCharacterFavorite, setCharacterLike, updateConversationPin, updateModel } from "@/lib/api";
 import { CHAT_LABELS, HEADER_LABELS, LANGUAGE_MENU, WALLET_PANEL, messageStatusLabel } from "@/lib/copy";
 import { errorMessage, messageForCode } from "@/lib/error-messages";
-import { AUDIENCE_ONBOARDING_SEEN_KEY, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
+import { AUDIENCE_ONBOARDING_SEEN_KEY, MATURE_CONTENT_NOT_ALLOWED_MESSAGE, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
+import { classifyCharacterEntryFailure } from "@/lib/character-entry";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
 import { subscribeToVisiblePageReturns } from "@/lib/page-return-refresh";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
@@ -150,7 +151,7 @@ function ChatContent() {
   const search = useSearchParams();
   const requestedConversationId = search.get("conversation");
   const router = useRouter();
-  const { refresh, context } = usePlumAuth();
+  const { refresh, context, ensureGuest } = usePlumAuth();
   const desktopMessageStageRef = useRef<HTMLElement>(null);
   const mobileMessageStageRef = useRef<HTMLElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -264,6 +265,9 @@ function ChatContent() {
     try {
       let conversationId = requestedConversationId;
       if (!conversationId) {
+        // A canonical share URL has no conversation id. Establish a Guest first so
+        // signed-out visitors can enter the same flow as someone clicking a Feed card.
+        await ensureGuest();
         const created = await createConversation(params.characterId);
         conversationId = created.conversation.id;
         router.replace(`/chat/${params.characterId}?conversation=${conversationId}`);
@@ -288,6 +292,21 @@ function ChatContent() {
       setLiked(null);
       setFavorited(null);
     } catch (loadError) {
+      const entryFailure = classifyCharacterEntryFailure(loadError);
+      if (entryFailure === "audience_setup_required") {
+        window.localStorage.setItem(AUDIENCE_ONBOARDING_SEEN_KEY, "1");
+        setShowWelcome(true);
+        setError(null);
+        return;
+      }
+      if (entryFailure === "mature_content_denied") {
+        setError(MATURE_CONTENT_NOT_ALLOWED_MESSAGE);
+        return;
+      }
+      if (entryFailure === "not_available") {
+        setError("This character is private, unpublished, or no longer available.");
+        return;
+      }
       if (loadError instanceof ApiError && loadError.status === 401) {
         router.replace("/");
         return;
@@ -614,9 +633,23 @@ function ChatContent() {
     router.replace("/");
   }
 
+  function completeWelcome() {
+    setShowWelcome(false);
+    if (conversation) void refresh();
+    else void load();
+  }
+
+  function closeWelcome() {
+    setShowWelcome(false);
+    if (!conversation) router.replace("/");
+  }
+
   if (loading) return <ChatLoading />;
+  if (showWelcome && (!conversation || !experience)) {
+    return <WelcomeDialog onComplete={completeWelcome} onClose={closeWelcome} />;
+  }
   if (!conversation || !experience) {
-    return <main className="fatal-state"><h1>Conversation not found</h1><p>{error}</p><button onClick={() => router.push("/")}>Back to characters</button></main>;
+    return <main className="fatal-state"><h1>Character unavailable</h1><p>{error}</p><button onClick={() => router.push("/")}>Back to characters</button></main>;
   }
 
   const character = conversation.character;
@@ -1563,7 +1596,7 @@ function ChatContent() {
           await load();
         })();
       }} onClose={() => { setPendingModel(null); setSignInOpen(false); }} />}
-      {showWelcome && <WelcomeDialog onComplete={() => { setShowWelcome(false); void refresh(); }} onClose={() => setShowWelcome(false)} />}
+      {showWelcome && <WelcomeDialog onComplete={completeWelcome} onClose={closeWelcome} />}
     </main>
   );
 }
