@@ -14,6 +14,7 @@ import { errorMessage, messageForCode } from "@/lib/error-messages";
 import { AUDIENCE_ONBOARDING_SEEN_KEY, shouldAutoOpenAudienceOnboarding } from "@/lib/audience-policy";
 import { shareCharacter as shareCharacterLink } from "@/lib/character-share";
 import { formatCoins, formatCompactCount, formatMessageTime } from "@/lib/format";
+import { subscribeToVisiblePageReturns } from "@/lib/page-return-refresh";
 import type { AuthUser, CharacterExperience, ChatMessage, Conversation, ConversationPin, GuestQuota, MessageStatus, ModelProfile } from "@/lib/types";
 
 const modelName = (model?: ModelProfile | null) => model ? (model.display_name || model.profile) : undefined;
@@ -160,6 +161,7 @@ function ChatContent() {
   const animationFrameRef = useRef<number | null>(null);
   const streamBufferRef = useRef("");
   const activeTurnRef = useRef<{ requestId: string; assistantId: string; cancelled: boolean } | null>(null);
+  const activeConversationIdRef = useRef<string | null>(null);
   const reconciliationTimersRef = useRef<number[]>([]);
   const nearBottomRef = useRef({ desktop: true, mobile: true });
   const desktopMemoryIconRef = useRef<HTMLButtonElement>(null);
@@ -258,6 +260,7 @@ function ChatContent() {
   async function load() {
     setLoading(true);
     setError(null);
+    activeConversationIdRef.current = null;
     try {
       let conversationId = requestedConversationId;
       if (!conversationId) {
@@ -270,6 +273,7 @@ function ChatContent() {
         getAuthContext(),
         getConversationHistory(),
       ]);
+      activeConversationIdRef.current = detail.conversation.id;
       setConversation(detail.conversation);
       setMessages(detail.messages);
       setModels(detail.models);
@@ -295,6 +299,19 @@ function ChatContent() {
   }
 
   useEffect(() => { void load(); }, [params.characterId, requestedConversationId]);
+  useEffect(() => subscribeToVisiblePageReturns(async () => {
+    const conversationId = activeConversationIdRef.current;
+    if (!conversationId) return;
+    try {
+      const detail = await getConversation(conversationId);
+      // A route change may finish while this background refresh is in flight.
+      if (activeConversationIdRef.current !== conversationId) return;
+      setConversation(detail.conversation);
+      setExperience(detail.experience);
+    } catch {
+      // Keep the last good profile on screen; the normal foreground load owns errors.
+    }
+  }), []);
   useEffect(() => {
     const stages = [
       ["desktop", desktopMessageStageRef.current],
