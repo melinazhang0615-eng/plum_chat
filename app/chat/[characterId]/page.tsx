@@ -1356,6 +1356,7 @@ function ChatContent() {
               <div className={`mobile-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={`mobile-${message.id}`}>
                 {message.role === "assistant" && <span className="mobile-message-avatar"><Image src={cover} alt="" fill sizes="28px" /></span>}
                 <div className="mobile-message-stack">
+                  {message.role === "assistant" && <b className="message-author">{displayName}</b>}
                   {waiting
                     ? <div className="typing"><i /><i /><i /></div>
                     : <div
@@ -1598,6 +1599,7 @@ function ChatContent() {
                 <div className={`reference-message-row ${message.role}${status === "failed" ? " failed" : status === "cancelled" ? " cancelled" : ""}`} key={message.id}>
                   {message.role === "assistant" && <span className="reference-message-avatar"><Image src={cover} alt="" fill sizes="30px" /></span>}
                   <div className="reference-message-stack">
+                    {message.role === "assistant" && <b className="message-author">{displayName}</b>}
                     {waiting
                       ? <div className="typing"><i /><i /><i /></div>
                       : <div className="reference-bubble">{message.content || (status === "cancelled" ? "Response stopped" : "Response failed")}</div>}
